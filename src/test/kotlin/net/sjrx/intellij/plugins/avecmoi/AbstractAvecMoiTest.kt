@@ -22,6 +22,7 @@ abstract class AbstractAvecMoiTest : BasePlatformTestCase() {
     // The light project (and the app-level MCP service) are reused across tests in a run, so their
     // state leaks between methods unless we wipe it. Reset to a clean slate here.
     ring.loadState(AvecMoiRingService.PersistedState())
+    ring.resetContactForTest()
     mcp.resetContactForTest()
   }
 

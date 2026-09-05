@@ -50,6 +50,25 @@ class AvecMoiMcpProtocolTest : AbstractAvecMoiTest() {
     }
   }
 
+  fun testEveryToolSchemaIsAnObjectAndProjectScopedToolsRequireProjectPath() {
+    // Exercise SUT
+    val tools = call("tools/list")["tools"]!!.jsonArray
+
+    // Verification — the schema is the agent's contract; a project-scoped tool that forgets to require
+    // projectPath would route nowhere. (ping / list_projects are intentionally not project-scoped.)
+    val projectScoped = AvecMoiMcpService.TOOL_NAMES.toSet() - setOf("ping", "list_projects")
+    tools.forEach { t ->
+      val name = t.jsonObject["name"]!!.jsonPrimitive.content
+      val schema = t.jsonObject["inputSchema"]!!.jsonObject
+      assertEquals("tool $name inputSchema.type", "object", schema["type"]!!.jsonPrimitive.content)
+      assertNotNull("tool $name has no properties block", schema["properties"])
+      if (name in projectScoped) {
+        val required = schema["required"]!!.jsonArray.map { it.jsonPrimitive.content }
+        assertTrue("project-scoped tool $name must require projectPath", "projectPath" in required)
+      }
+    }
+  }
+
   fun testPingToolReturnsPong() {
     // Exercise SUT
     // language=JSON

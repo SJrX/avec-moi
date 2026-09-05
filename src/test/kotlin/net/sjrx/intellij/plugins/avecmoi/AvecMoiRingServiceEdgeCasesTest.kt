@@ -96,6 +96,24 @@ class AvecMoiRingServiceEdgeCasesTest : AbstractAvecMoiTest() {
     assertNull(ring.activeId())
   }
 
+  fun testEachSessionKeepsItsOwnNavigationCursor() {
+    // Fixture Setup — advance the cursor in session A
+    val a = ring.createSession("A", null)
+    ring.set(listOf(spec(note = "a1"), spec(note = "a2")))
+    ring.next() // A cursor -> 0
+    ring.next() // A cursor -> 1
+    assertEquals(1, ring.cursorIndex())
+
+    // Exercise SUT — a second session starts navigation from scratch
+    ring.createSession("B", null)
+    ring.set(listOf(spec(note = "b1")))
+    assertEquals("B starts with a fresh cursor", -1, ring.cursorIndex())
+
+    // Verification — switching back to A restores A's cursor, independent of B
+    ring.switchSession(a)
+    assertEquals(1, ring.cursorIndex())
+  }
+
   fun testHandoffsRegisteredWhileNoSessionExistsLandInAnAutoCreatedActiveSession() {
     // Exercise SUT — no createSession() first
     ring.add(spec(note = "solo"), null)

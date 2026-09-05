@@ -25,6 +25,26 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
       result.contentText().contains("Matched project"))
   }
 
+  fun testListProjectsIncludesTheOpenFixtureProject() {
+    // Exercise SUT — list_projects takes no projectPath
+    val text = callTool("list_projects", "{}").contentText()
+    // Verification
+    assertTrue("expected the fixture project in: $text", text.contains(project.name))
+  }
+
+  fun testAProjectRoutedToolCallRecordsContactForTheConnectionIndicator() {
+    // Fixture Setup — setUp cleared both runtime contact flags
+    assertFalse(ring.isContacted())
+    assertFalse(mcp.anyContact())
+
+    // Exercise SUT — any project-routed tool call
+    callTool("list_handoffs", """{ "projectPath": "$projectPath" }""")
+
+    // Verification — this is what the connection dot reads: green (this project) and >= yellow (any)
+    assertTrue("this project must be marked contacted (green indicator)", ring.isContacted())
+    assertTrue("any-contact must be set (at least yellow indicator)", mcp.anyContact())
+  }
+
   fun testAToolCallForAnUnknownDirectoryReportsNoProject() {
     // Exercise SUT
     // language=JSON
@@ -50,6 +70,21 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     assertTrue(text.contains("A.kt:3"))
     assertTrue(text.contains("implement B"))
     assertTrue(text.contains("B.kt:1")) // line defaults to 1 when omitted
+  }
+
+  fun testRegisterSilentlyDropsHandoffEntriesMissingAFile() {
+    // Exercise SUT — one good entry, one with no `file`
+    // language=JSON
+    val result = callTool("register_handoffs", """
+      { "projectPath": "$projectPath",
+        "handoffs": [ { "file": "Good.kt", "note": "keep" },
+                      { "note": "no file, should be dropped" } ] }
+    """.trimIndent())
+
+    // Verification — the call succeeds, but only the well-formed entry lands (documents the contract:
+    // per-entry `file` is required, and a malformed entry is skipped rather than failing the batch)
+    assertFalse(result.isError())
+    assertEquals(listOf("keep"), ring.all().map { it.note })
   }
 
   fun testListHandoffsOnAnEmptyProjectSaysSo() {

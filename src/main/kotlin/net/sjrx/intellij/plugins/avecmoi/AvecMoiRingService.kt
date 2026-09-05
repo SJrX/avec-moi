@@ -71,6 +71,12 @@ class AvecMoiRingService(private val project: Project) :
 
   fun isContacted(): Boolean = contacted
 
+  /** Clear the runtime contact flag so a test can observe a clean false→true (the project is reused). */
+  @org.jetbrains.annotations.TestOnly
+  fun resetContactForTest() {
+    contacted = false
+  }
+
   private fun changed() = project.messageBus.syncPublisher(TOPIC).ringChanged()
 
   // --- session management -----------------------------------------------------------------------
