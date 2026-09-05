@@ -39,14 +39,28 @@ class AskForHintAction : AnAction() {
     val message = if (selection.hasSelection()) {
       val startLine = doc.getLineNumber(selection.selectionStart) + 1
       val endLine = doc.getLineNumber(selection.selectionEnd) + 1
-      "I'm stuck on this — give me a hint, don't implement it for me: $file lines $startLine-$endLine."
+      hintMessage(file, startLine to endLine, caretLine = 0)
     } else {
-      val line = editor.caretModel.logicalPosition.line + 1
-      "I'm stuck here — give me a hint, don't implement it for me: $file:$line."
+      hintMessage(file, selectionLines = null, caretLine = editor.caretModel.logicalPosition.line + 1)
     }
 
     if (!AvecMoiTerminal.send(project, message)) {
       thisLogger().warn("avec-moi: no terminal to send hint request to")
     }
+  }
+
+  companion object {
+    /**
+     * The hint request the agent receives: a pointer to where the human is stuck (a selected line
+     * range, else the caret line) plus the explicit "don't implement it for me" guardrail that makes
+     * this a hint rather than a handoff. Pure, so the reference formatting is unit-testable.
+     */
+    fun hintMessage(file: String, selectionLines: Pair<Int, Int>?, caretLine: Int): String =
+      if (selectionLines != null) {
+        "I'm stuck on this — give me a hint, don't implement it for me: " +
+          "$file lines ${selectionLines.first}-${selectionLines.second}."
+      } else {
+        "I'm stuck here — give me a hint, don't implement it for me: $file:$caretLine."
+      }
   }
 }
