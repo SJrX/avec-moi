@@ -33,9 +33,9 @@ import java.util.Properties
  *
  * One server serves ALL open projects in this IDE process; tools that act on a project take a
  * `projectPath` and are routed to the matching open project (see [resolveProject]). Registered once
- * globally with Claude Code (`claude mcp add --scope user ...`), so every `claude` anywhere reaches it.
+ * globally with the agent's MCP client (e.g. `claude mcp add --scope user ...`), so every session reaches it.
  *
- * SECURITY: runs inside the IDE process (outside Claude's sandbox), so the tool list IS the trust
+ * SECURITY: runs inside the IDE process (outside the agent's sandbox), so the tool list IS the trust
  * boundary — every tool stays read-only/metadata or append-only-state, never file-write or exec.
  * Bound to 127.0.0.1 only.
  */
@@ -56,7 +56,7 @@ class AvecMoiMcpService : Disposable {
     try {
       val s = HttpServer.create(InetSocketAddress("127.0.0.1", PORT), 0)
       s.createContext("/mcp") { ex -> handle(ex) }
-      // Catch-all: any non-/mcp path (e.g. Claude Code's OAuth "re-authenticate" probe of
+      // Catch-all: any non-/mcp path (e.g. an MCP client's OAuth "re-authenticate" probe of
       // /.well-known/oauth-*) gets a clean JSON 404 instead of the JDK's default HTML page, so the
       // client's OAuth SDK parses it and treats us as "no auth required" rather than crashing on
       // "Unrecognized token '<'". (We're a no-auth localhost server; there's nothing to authorize.)
@@ -136,7 +136,7 @@ class AvecMoiMcpService : Disposable {
       tool(
         "resolve_project",
         "Given a working directory, report which open IntelliJ project it belongs to.",
-        requiredString("projectPath", "Absolute path to a directory inside the project (e.g. Claude's cwd)."),
+        requiredString("projectPath", "Absolute path to a directory inside the project (e.g. your cwd)."),
       )
       tool(
         "register_handoffs",
@@ -213,7 +213,7 @@ class AvecMoiMcpService : Disposable {
     return projects.joinToString("\n") { p -> "- ${p.name}: ${p.basePath ?: "(no base path)"}" }
   }
 
-  /** Match a directory (e.g. Claude's cwd) to the open project whose base dir contains it; deepest wins. */
+  /** Match a directory (e.g. the agent's cwd) to the open project whose base dir contains it; deepest wins. */
   private fun resolveProject(path: String?): Project? {
     if (path.isNullOrBlank()) return null
     val norm = path.trimEnd('/')
@@ -327,7 +327,7 @@ class AvecMoiMcpService : Disposable {
      * gets it with no per-project setup. Guidance, not a rigid workflow: the model decides specifics.
      */
     private val INSTRUCTIONS = """
-      avec-moi is a collaborative-coding server: you (the AI) design and scaffold, the human
+      avec-moi is a collaborative-coding server: you (the agent) design and scaffold, the human
       implements the load-bearing logic. The point is to keep the human engaged and fluent in
       their own codebase — "with me," not "for me." Work WITH the human, not around them.
 

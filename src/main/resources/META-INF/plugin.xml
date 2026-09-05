@@ -19,17 +19,17 @@
   </extensions>
 
   <actions>
-    <action id="avecmoi.SendToClaude"
-            class="net.sjrx.intellij.plugins.avecmoi.SendToClaudeAction"
-            text="avec-moi: Step Done → Claude"
-            description="Inject 'Step done' into the running Claude terminal session and submit it">
+    <action id="avecmoi.StepDone"
+            class="net.sjrx.intellij.plugins.avecmoi.StepDoneAction"
+            text="avec-moi: Step Done → Agent"
+            description="Inject 'Step done' into the running agent terminal session and submit it">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
       <keyboard-shortcut keymap="$default" first-keystroke="control alt shift D"/>
     </action>
     <action id="avecmoi.NextHandoff"
             class="net.sjrx.intellij.plugins.avecmoi.NextHandoffAction"
             text="avec-moi: Next Handoff"
-            description="Jump to the next handoff Claude registered for you to implement">
+            description="Jump to the next handoff the agent registered for you to implement">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
       <!-- No default shortcut: bind your own in Settings | Keymap (search "avec-moi") to avoid
            colliding with the user's keymap (e.g. Ctrl+Alt+Shift+N = Go to Symbol). -->
@@ -37,7 +37,7 @@
     <action id="avecmoi.AskForHint"
             class="net.sjrx.intellij.plugins.avecmoi.AskForHintAction"
             text="avec-moi: Ask for a Hint"
-            description="Ask Claude for a hint at the cursor or selection (saves the file, sends a reference)">
+            description="Ask the agent for a hint at the cursor or selection (saves the file, sends a reference)">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
       <!-- No default shortcut: bind your own in Settings | Keymap. -->
     </action>

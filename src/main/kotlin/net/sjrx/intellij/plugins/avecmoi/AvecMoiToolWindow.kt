@@ -33,7 +33,7 @@ class AvecMoiToolWindowFactory : ToolWindowFactory, DumbAware {
     val content = ContentFactory.getInstance().createContent(panel, "", false)
     toolWindow.contentManager.addContent(content)
 
-    // Live refresh whenever the ring changes (e.g. Claude calls register_handoffs).
+    // Live refresh whenever the ring changes (e.g. the agent calls register_handoffs).
     project.messageBus.connect(toolWindow.disposable).subscribe(
       AvecMoiRingService.TOPIC,
       AvecMoiRingListener { ApplicationManager.getApplication().invokeLater { panel.reload() } },
@@ -47,7 +47,7 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
 
   private val list = JBList(model).apply {
     selectionMode = ListSelectionModel.SINGLE_SELECTION
-    emptyText.text = "No handoffs yet — Claude registers them as you work."
+    emptyText.text = "No handoffs yet — the agent registers them as you work."
     cellRenderer = object : ColoredListCellRenderer<AvecMoiRingService.Handoff>() {
       override fun customizeCellRenderer(
         list: JList<out AvecMoiRingService.Handoff>,

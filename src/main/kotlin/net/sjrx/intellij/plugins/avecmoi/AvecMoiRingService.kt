@@ -14,8 +14,8 @@ fun interface AvecMoiRingListener {
 }
 
 /**
- * Per-project store of the current handoff ring: the ordered spots Claude left for the human to
- * implement. Claude fills it via `register_handoffs`; navigation actions walk it.
+ * Per-project store of the current handoff ring: the ordered spots the agent left for the human to
+ * implement. The agent fills it via `register_handoffs`; navigation actions walk it.
  *
  * Each handoff is anchored by a [RangeMarker] so its line follows the human's edits (implementing
  * one handoff shifts the others down — raw line numbers would rot). Falls back to the registered

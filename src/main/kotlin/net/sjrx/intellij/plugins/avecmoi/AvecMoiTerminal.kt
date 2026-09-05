@@ -6,8 +6,8 @@ import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager
 import org.jetbrains.plugins.terminal.TerminalToolWindowFactory
 
 /**
- * Shared "push" channel: inject text into the selected terminal session (where `claude` runs) and
- * submit it. Used by every avec-moi action that talks to Claude (Step Done, Ask for a Hint, …).
+ * Shared "push" channel: inject text into the selected terminal session (where the agent's CLI
+ * runs) and submit it. Used by every avec-moi action that talks to the agent (Step Done, Hint, …).
  *
  * Resolves the reworked-terminal engine (default since 2025.2): match the tool window's selected
  * content to a TerminalToolWindowTab and drive its TerminalView.

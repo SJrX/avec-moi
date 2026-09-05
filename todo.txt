@@ -10,9 +10,9 @@ MCP server
       Claude Code's "Re-authenticate" OAuth probe of non-/mcp paths parses fine and reads as "no
       auth required" instead of crashing on the JDK's HTML 404. (If a client ever wants explicit
       OAuth-metadata, add minimal .well-known/oauth-* later — not needed for a no-auth server.)
-- [ ] Terminology: use "the agent" (provider-agnostic), not "Claude", in all user-facing text +
-      prompts. Sweep: INSTRUCTIONS, tool-window empty-state, plugin.xml action descriptions,
-      SendToClaudeAction class name.
+- [x] Terminology: swept "Claude" -> "the agent" across user-facing text, prompts, and comments;
+      renamed SendToClaudeAction -> StepDoneAction (action id avecmoi.StepDone). Only the literal
+      `claude mcp add` CLI example remains (intentional — real command).
 
 Handoffs / ring (from first-run design feedback)
 - [x] Make `note` required in the register_handoffs schema (a note-less handoff is just a jump).

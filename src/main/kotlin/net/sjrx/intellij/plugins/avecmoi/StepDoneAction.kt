@@ -6,10 +6,10 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.diagnostic.thisLogger
 
 /**
- * "Step Done": tells Claude the human finished their turn, without leaving the editor. Injects a
- * canned line into the running `claude` terminal session and submits it.
+ * "Step Done": tells the agent the human finished their turn, without leaving the editor. Injects a
+ * canned line into the running agent terminal session and submits it.
  */
-class SendToClaudeAction : AnAction() {
+class StepDoneAction : AnAction() {
 
   override fun getActionUpdateThread() = ActionUpdateThread.BGT
 

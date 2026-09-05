@@ -8,9 +8,9 @@ import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 
 /**
- * "Ask for a Hint": the human is stuck and wants a nudge — NOT for Claude to implement it (that
- * would defeat avec-moi). Saves the current file, then sends Claude a reference to where the human
- * is (cursor line, or the selected range), and lets Claude read the freshly-saved region.
+ * "Ask for a Hint": the human is stuck and wants a nudge — NOT for the agent to implement it (that
+ * would defeat avec-moi). Saves the current file, then sends the agent a reference to where the
+ * human is (cursor line, or the selected range), and lets the agent read the freshly-saved region.
  *
  * We send a location reference rather than pasting code: it's always current and sidesteps the
  * escaping/newline hazards of injecting multi-line content into a terminal.
@@ -28,7 +28,7 @@ class AskForHintAction : AnAction() {
     val editor = e.getData(CommonDataKeys.EDITOR) ?: return
     val doc = editor.document
 
-    // Save so Claude reads current content when it looks at the referenced spot.
+    // Save so the agent reads current content when it looks at the referenced spot.
     FileDocumentManager.getInstance().saveDocument(doc)
 
     val file = FileDocumentManager.getInstance().getFile(doc)?.path ?: return
