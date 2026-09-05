@@ -11,6 +11,9 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.editor.EditorFactory
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.SimpleToolWindowPanel
@@ -40,6 +43,15 @@ class AvecMoiToolWindowFactory : ToolWindowFactory, DumbAware {
     project.messageBus.connect(toolWindow.disposable).subscribe(
       AvecMoiRingService.TOPIC,
       AvecMoiRingListener { ApplicationManager.getApplication().invokeLater { panel.reload() } },
+    )
+
+    // Keep displayed line numbers live as the human edits — the renderer reads the live
+    // RangeMarker position, so a repaint is enough to reflect drift.
+    EditorFactory.getInstance().eventMulticaster.addDocumentListener(
+      object : DocumentListener {
+        override fun documentChanged(event: DocumentEvent) = panel.refreshLines()
+      },
+      toolWindow.disposable,
     )
   }
 }
@@ -76,6 +88,11 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
     treeModel.reload()
     TreeUtil.expandAll(tree)
     selectHandoff(project.service<AvecMoiRingService>().cursorIndex())
+  }
+
+  /** Repaint so the renderer re-reads live marker line numbers after the human edits. */
+  fun refreshLines() {
+    if (root.childCount > 0) tree.repaint()
   }
 
   private fun selectedHandoff(): AvecMoiRingService.Handoff? {
