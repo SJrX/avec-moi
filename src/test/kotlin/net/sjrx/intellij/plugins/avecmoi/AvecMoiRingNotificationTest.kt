@@ -39,6 +39,7 @@ class AvecMoiRingNotificationTest : AbstractAvecMoiTest() {
     assertEquals("switchSession", 1, notificationsFrom { ring.switchSession(id) })
     assertEquals("renameSession", 1, notificationsFrom { ring.renameSession(id, "Renamed") })
     assertEquals("completeSession", 1, notificationsFrom { ring.completeSession(id) })
+    assertEquals("deleteSession", 1, notificationsFrom { ring.deleteSession(id) })
   }
 
   fun testAFailedMutationDoesNotNotify() {
@@ -50,5 +51,6 @@ class AvecMoiRingNotificationTest : AbstractAvecMoiTest() {
     assertEquals("out-of-range remove", 0, notificationsFrom { ring.remove(9) })
     assertEquals("switch to unknown session", 0, notificationsFrom { ring.switchSession("nope") })
     assertEquals("rename unknown session", 0, notificationsFrom { ring.renameSession("nope", "x") })
+    assertEquals("delete unknown session", 0, notificationsFrom { ring.deleteSession("nope") })
   }
 }

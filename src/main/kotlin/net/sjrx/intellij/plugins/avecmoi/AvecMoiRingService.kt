@@ -127,6 +127,20 @@ class AvecMoiRingService(private val project: Project) :
     return ok
   }
 
+  /** Remove a session entirely, disposing its handoff markers. Used to prune historical sessions. */
+  fun deleteSession(id: String): Boolean {
+    val ok = synchronized(this) {
+      val s = sessions.firstOrNull { it.id == id } ?: return@synchronized false
+      s.handoffs.forEach { it.marker?.dispose() }
+      sessions.remove(s)
+      // A deleted session can't remain the active one; fall back to another open session (or none).
+      if (activeId == id) activeId = sessions.firstOrNull { !it.historical }?.id
+      true
+    }
+    if (ok) changed()
+    return ok
+  }
+
   /** The active (non-historical) session, or null. Caller must hold the lock. */
   private fun activeLocked(): Session? =
     activeId?.let { id -> sessions.firstOrNull { it.id == id && !it.historical } }

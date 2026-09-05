@@ -136,4 +136,36 @@ class AvecMoiRingServiceEdgeCasesTest : AbstractAvecMoiTest() {
     assertNotNull(ring.activeId())
     assertEquals("solo", ring.all().single().note)
   }
+
+  fun testDeleteSessionRemovesItEntirely() {
+    // Fixture Setup — a completed (historical) session, the case the UI offers delete for
+    val keep = ring.createSession("Keep", null)
+    val gone = ring.createSession("Prune me", null)
+    ring.completeSession(gone)
+
+    // Exercise SUT
+    assertTrue(ring.deleteSession(gone))
+
+    // Verification — it's gone, the other session is untouched
+    assertEquals(listOf(keep), ring.listSessions().map { it.id })
+  }
+
+  fun testDeleteUnknownSessionReturnsFalse() {
+    ring.createSession("Only", null)
+    assertFalse(ring.deleteSession("nope"))
+    assertEquals(1, ring.listSessions().size)
+  }
+
+  fun testDeletingTheActiveSessionFallsBackToAnotherOpenSession() {
+    // Defensive: the UI only deletes historical sessions, but the service must keep the active
+    // invariant if an active one is ever deleted.
+    val first = ring.createSession("First", null)
+    val second = ring.createSession("Second", null) // active
+    assertEquals(second, ring.activeId())
+
+    ring.deleteSession(second)
+
+    assertEquals(first, ring.activeId())
+    assertEquals(listOf(first), ring.listSessions().map { it.id })
+  }
 }

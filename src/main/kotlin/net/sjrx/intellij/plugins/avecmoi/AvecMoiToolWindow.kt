@@ -108,6 +108,8 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
         add(SetActiveAction())
         add(RenameSessionAction())
         add(CompleteSessionAction())
+        addSeparator()
+        add(DeleteSessionAction())
       },
       "AvecMoiSessionPopup",
     )
@@ -317,6 +319,26 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
     }
     override fun actionPerformed(e: AnActionEvent) {
       selectedSession()?.let { project.service<AvecMoiRingService>().completeSession(it.id) }
+    }
+  }
+
+  /** Permanently remove a historical (finished) session. Destructive, so it's confirmed and only
+   *  offered on historical rows — completed sessions are the ones you'd prune. */
+  private inner class DeleteSessionAction : AnAction("Delete Session", null, AllIcons.Actions.GC), DumbAware {
+    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    override fun update(e: AnActionEvent) {
+      val s = selectedSession()
+      e.presentation.isEnabledAndVisible = s != null && s.historical
+    }
+    override fun actionPerformed(e: AnActionEvent) {
+      val s = selectedSession() ?: return
+      val confirmed = Messages.showYesNoDialog(
+        project,
+        "Delete session “${s.name}” and its ${s.handoffs.size} handoff(s)? This can't be undone.",
+        "Delete Session",
+        Messages.getWarningIcon(),
+      )
+      if (confirmed == Messages.YES) project.service<AvecMoiRingService>().deleteSession(s.id)
     }
   }
 
