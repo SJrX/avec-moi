@@ -11,9 +11,8 @@ class AvecMoiEditorContextToolTest : AbstractAvecMoiTest() {
     callTool("get_editor_context", """{ "projectPath": "$projectPath" }""").contentText()
 
   fun testReportsTheCaretLineAndColumnOneBased() {
-    // Fixture Setup — caret at the start of the 2nd line (0-based line 1)
-    myFixture.configureByText("Sample.kt", "line one\nline two\nline three\n")
-    myFixture.editor.caretModel.moveToOffset("line one\n".length)
+    // Fixture Setup — the platform's <caret> marker places the caret at the start of the 2nd line
+    myFixture.configureByText("Sample.kt", "line one\n<caret>line two\nline three\n")
 
     // Verification
     val context = editorContext()
@@ -30,11 +29,8 @@ class AvecMoiEditorContextToolTest : AbstractAvecMoiTest() {
   }
 
   fun testReportsTheSelectedTextAndItsLineRange() {
-    // Fixture Setup — select the whole 2nd line
-    myFixture.configureByText("Sample.kt", "line one\nline two\nline three\n")
-    val start = "line one\n".length
-    val end = "line one\nline two".length
-    myFixture.editor.selectionModel.setSelection(start, end)
+    // Fixture Setup — the platform's <selection>…</selection> markers select the whole 2nd line
+    myFixture.configureByText("Sample.kt", "line one\n<selection>line two</selection>\nline three\n")
 
     // Verification
     val context = editorContext()
