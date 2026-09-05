@@ -89,6 +89,16 @@ class AvecMoiRingService(private val project: Project) : Disposable {
   @Synchronized
   fun cursorIndex(): Int = cursor
 
+  /** Empty the ring (e.g. the plan is finished). */
+  fun clear() {
+    synchronized(this) {
+      handoffs.forEach { it.marker?.dispose() }
+      handoffs.clear()
+      cursor = -1
+    }
+    project.messageBus.syncPublisher(TOPIC).ringChanged()
+  }
+
   private fun createMarker(file: String, line1Based: Int): RangeMarker? {
     val vf = AvecMoiNavigation.resolveFile(project, file) ?: return null
     val doc = FileDocumentManager.getInstance().getDocument(vf) ?: return null

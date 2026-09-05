@@ -1,6 +1,7 @@
 package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -177,6 +178,17 @@ class AvecMoiMcpService : Disposable {
           put("description", "1-based line to navigate to.")
         },
       )
+      tool(
+        "list_handoffs",
+        "List the handoffs currently registered for a project — call after a context reset/resume " +
+          "to recover state before re-registering.",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+      )
+      tool(
+        "clear_handoffs",
+        "Clear all registered handoffs for a project (e.g. the plan is finished).",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+      )
     }
   }
 
@@ -195,6 +207,8 @@ class AvecMoiMcpService : Disposable {
       }
       "register_handoffs" -> registerHandoffs(args)
       "navigate_to" -> navigateTo(args)
+      "list_handoffs" -> listHandoffs(args)
+      "clear_handoffs" -> clearHandoffs(args)
       else -> textContent("Unknown tool: $name", isError = true)
     }
   }
@@ -259,6 +273,30 @@ class AvecMoiMcpService : Disposable {
     }
   }
 
+  private fun listHandoffs(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val ring = project.service<AvecMoiRingService>()
+    // reading .line touches the marker's document, so compute under a read lock (we're off the EDT).
+    val text = ReadAction.compute<String, RuntimeException> {
+      ring.all().mapIndexed { i, h -> "${i + 1}. ${h.note}  (${h.file}:${h.line})" }.joinToString("\n")
+    }
+    return if (text.isBlank()) {
+      textContent("No handoffs registered for project '${project.name}'.", isError = false)
+    } else {
+      textContent("Handoffs for '${project.name}':\n$text", isError = false)
+    }
+  }
+
+  private fun clearHandoffs(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    project.service<AvecMoiRingService>().clear()
+    return textContent("Cleared all handoffs for project '${project.name}'.", isError = false)
+  }
+
   // --- JSON helpers ------------------------------------------------------------------------------
 
   private fun kotlinx.serialization.json.JsonArrayBuilder.tool(
@@ -319,7 +357,10 @@ class AvecMoiMcpService : Disposable {
      * Names of the tools registered in [toolsListResult] — keep in sync. Surfaced by `ping` so an
      * agent can detect it's on a stale tool list after a rebuild ("server has N, I see fewer").
      */
-    val TOOL_NAMES = listOf("ping", "list_projects", "resolve_project", "register_handoffs", "navigate_to")
+    val TOOL_NAMES = listOf(
+      "ping", "list_projects", "resolve_project", "register_handoffs", "navigate_to",
+      "list_handoffs", "clear_handoffs",
+    )
 
     /**
      * Server-level guidance surfaced to the model on connect (MCP InitializeResult.instructions).
@@ -349,6 +390,11 @@ class AvecMoiMcpService : Disposable {
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
       - The human steps through the handoffs, implements them, and signals when ready (a "Step done"
         message in the conversation). Then you read their work and review or continue.
+      - After a context reset or resume, call `list_handoffs` to recover what's currently registered
+        rather than guessing. The ring lives in the IDE and is NOT saved across IDE restarts, so if
+        list_handoffs comes back empty when you expected handoffs (the IDE restarted, or the human
+        cleared them), just re-register from your plan — it's not an error. (register_handoffs
+        replaces the whole set; clear_handoffs empties it.)
 
       All tools take a `projectPath` (the human's project directory, i.e. your cwd) so the right
       open IDE project is targeted.
