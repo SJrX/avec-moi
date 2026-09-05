@@ -243,6 +243,37 @@ class AvecMoiMcpService : Disposable {
           put("description", "1-based handoff number (as shown by list_handoffs).")
         },
       )
+      tool(
+        "create_session",
+        "Start a new named session (container of handoffs) and make it active — for a distinct piece " +
+          "of work, or a second agent on the same project. Handoff tools act on the active session.",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+        requiredString("name", "A short default name for the session (the human can rename it)."),
+      )
+      tool(
+        "list_sessions",
+        "List this project's sessions (active / open / historical) with names, branch, and progress.",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+      )
+      tool(
+        "switch_session",
+        "Make an existing open session active (by its id from list_sessions).",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+        requiredString("session", "Session id (e.g. s1), as shown by list_sessions."),
+      )
+      tool(
+        "rename_session",
+        "Rename a session (by its id from list_sessions).",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+        requiredString("session", "Session id (e.g. s1)."),
+        requiredString("name", "The new name."),
+      )
+      tool(
+        "complete_session",
+        "Mark a session done — moves it to Historical (by its id from list_sessions).",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+        requiredString("session", "Session id (e.g. s1)."),
+      )
     }
   }
 
@@ -267,6 +298,11 @@ class AvecMoiMcpService : Disposable {
       "clear_handoffs" -> clearHandoffs(args)
       "mark_handoff_done" -> markHandoffDone(args)
       "remove_handoff" -> removeHandoff(args)
+      "create_session" -> createSession(args)
+      "list_sessions" -> listSessions(args)
+      "switch_session" -> switchSession(args)
+      "rename_session" -> renameSession(args)
+      "complete_session" -> completeSession(args)
       else -> textContent("Unknown tool: $name", isError = true)
     }
   }
@@ -422,6 +458,94 @@ class AvecMoiMcpService : Disposable {
     }
   }
 
+  // --- sessions ----------------------------------------------------------------------------------
+
+  private fun createSession(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val name = args?.get("name")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'name'.", isError = true)
+    val branch = currentBranch(project)
+    val id = project.service<AvecMoiRingService>().createSession(name, branch)
+    return textContent(
+      "Created session '$name' ($id)${branch?.let { " on branch $it" } ?: ""} and made it active.",
+      isError = false,
+    )
+  }
+
+  private fun listSessions(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val ring = project.service<AvecMoiRingService>()
+    val active = ring.activeId()
+    val sessions = ring.listSessions()
+    if (sessions.isEmpty()) return textContent("No sessions yet in '${project.name}'.", isError = false)
+    val text = sessions.joinToString("\n") { s ->
+      val tag = when {
+        s.historical -> "historical"
+        s.id == active -> "ACTIVE"
+        else -> "open"
+      }
+      val done = s.handoffs.count { it.done }
+      "[$tag] ${s.id}: ${s.name}${s.branch?.let { " (branch $it)" } ?: ""} — $done/${s.handoffs.size} handoffs done"
+    }
+    return textContent(text, isError = false)
+  }
+
+  private fun switchSession(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val id = args?.get("session")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'session' id.", isError = true)
+    return if (project.service<AvecMoiRingService>().switchSession(id)) {
+      textContent("Active session is now $id in '${project.name}'.", isError = false)
+    } else {
+      textContent("No open session '$id' in '${project.name}'.", isError = true)
+    }
+  }
+
+  private fun renameSession(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val id = args?.get("session")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'session' id.", isError = true)
+    val name = args?.get("name")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'name'.", isError = true)
+    return if (project.service<AvecMoiRingService>().renameSession(id, name)) {
+      textContent("Renamed session $id to '$name'.", isError = false)
+    } else {
+      textContent("No session '$id' in '${project.name}'.", isError = true)
+    }
+  }
+
+  private fun completeSession(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val id = args?.get("session")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'session' id.", isError = true)
+    return if (project.service<AvecMoiRingService>().completeSession(id)) {
+      textContent("Completed session $id (moved to Historical) in '${project.name}'.", isError = false)
+    } else {
+      textContent("No session '$id' in '${project.name}'.", isError = true)
+    }
+  }
+
+  private fun currentBranch(project: Project): String? = try {
+    val base = project.basePath ?: return null
+    val p = ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD")
+      .directory(java.io.File(base))
+      .redirectErrorStream(true)
+      .start()
+    p.inputStream.bufferedReader().readText().trim().takeIf { p.waitFor() == 0 && it.isNotBlank() }
+  } catch (_: Exception) {
+    null
+  }
+
   // --- JSON helpers ------------------------------------------------------------------------------
 
   private fun kotlinx.serialization.json.JsonArrayBuilder.tool(
@@ -485,6 +609,7 @@ class AvecMoiMcpService : Disposable {
     val TOOL_NAMES = listOf(
       "ping", "list_projects", "resolve_project", "register_handoffs", "add_handoff", "navigate_to",
       "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
+      "create_session", "list_sessions", "switch_session", "rename_session", "complete_session",
     )
 
     /**
@@ -515,6 +640,10 @@ class AvecMoiMcpService : Disposable {
         rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
       - To add a spot mid-flight, use `add_handoff` (appends one, preserving existing progress);
         register_handoffs replaces the whole set and resets done-state.
+      - Handoffs live in a SESSION; the active one is used automatically, so you usually needn't
+        think about it. For a distinct piece of work (or a second agent on this project), call
+        `create_session("<name>")` to start a fresh one; `list_sessions` / `switch_session` /
+        `rename_session` manage them; `complete_session` moves a finished one to Historical.
       - Every handoff needs a specific note: what to implement here and why it matters.
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
       - The human steps through the handoffs and implements them.
