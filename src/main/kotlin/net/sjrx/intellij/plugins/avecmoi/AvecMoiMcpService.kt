@@ -70,29 +70,44 @@ class AvecMoiMcpService : Disposable {
   fun startIfNeeded() {
     if (server != null) return
     try {
-      val s = HttpServer.create(InetSocketAddress("127.0.0.1", PORT), 0)
-      s.createContext("/mcp") { ex -> handle(ex) }
-      // Catch-all: any non-/mcp path (e.g. an MCP client's OAuth "re-authenticate" probe of
-      // /.well-known/oauth-*) gets a clean JSON 404 instead of the JDK's default HTML page, so the
-      // client's OAuth SDK parses it and treats us as "no auth required" rather than crashing on
-      // "Unrecognized token '<'". (We're a no-auth localhost server; there's nothing to authorize.)
-      s.createContext("/") { ex ->
-        anyContact = true // even an OAuth "re-authenticate" probe means a client is trying to connect
-        try {
-          respond(ex, 404, "{\"error\":\"not_found\"}")
-        } catch (t: Throwable) {
-          thisLogger().warn("avec-moi MCP: root handler error", t)
-        } finally {
-          ex.close()
-        }
-      }
-      s.executor = null
+      val s = configureServer(PORT)
       s.start()
       server = s
-      thisLogger().info("avec-moi MCP seurver listening on http://127.0.0.1:$PORT/mcp")
+      thisLogger().info("avec-moi MCP server listening on http://127.0.0.1:$PORT/mcp")
     } catch (t: Throwable) {
       thisLogger().warn("avec-moi: failed to start MCP server on port $PORT", t)
     }
+  }
+
+  /** Build the server with its `/mcp` and catch-all contexts, bound to [port] (0 = an ephemeral port). */
+  private fun configureServer(port: Int): HttpServer {
+    val s = HttpServer.create(InetSocketAddress("127.0.0.1", port), 0)
+    s.createContext("/mcp") { ex -> handle(ex) }
+    // Catch-all: any non-/mcp path (e.g. an MCP client's OAuth "re-authenticate" probe of
+    // /.well-known/oauth-*) gets a clean JSON 404 instead of the JDK's default HTML page, so the
+    // client's OAuth SDK parses it and treats us as "no auth required" rather than crashing on
+    // "Unrecognized token '<'". (We're a no-auth localhost server; there's nothing to authorize.)
+    s.createContext("/") { ex ->
+      anyContact = true // even an OAuth "re-authenticate" probe means a client is trying to connect
+      try {
+        respond(ex, 404, "{\"error\":\"not_found\"}")
+      } catch (t: Throwable) {
+        thisLogger().warn("avec-moi MCP: root handler error", t)
+      } finally {
+        ex.close()
+      }
+    }
+    s.executor = null
+    return s
+  }
+
+  /** Start a throwaway server on an ephemeral port for an HTTP-level test; returns the bound port. */
+  @org.jetbrains.annotations.TestOnly
+  internal fun startOnEphemeralPortForTest(disposable: Disposable): Int {
+    val s = configureServer(0)
+    s.start()
+    com.intellij.openapi.util.Disposer.register(disposable) { s.stop(0) }
+    return s.address.port
   }
 
   private fun handle(ex: HttpExchange) {
