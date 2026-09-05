@@ -167,6 +167,31 @@ class AvecMoiMcpService : Disposable {
           }
         },
       )
+      addJsonObject {
+        put("name", "add_handoff")
+        put(
+          "description",
+          "Append ONE handoff without disturbing existing ones or their done-state (unlike " +
+            "register_handoffs, which replaces the whole set). Optionally insert at a 1-based position.",
+        )
+        putJsonObject("inputSchema") {
+          put("type", "object")
+          putJsonObject("properties") {
+            putJsonObject("projectPath") {
+              put("type", "string"); put("description", "Absolute path inside the target project (e.g. your cwd).")
+            }
+            putJsonObject("file") {
+              put("type", "string"); put("description", "File path (absolute, or relative to the project root).")
+            }
+            putJsonObject("line") { put("type", "integer"); put("description", "1-based line of the stub.") }
+            putJsonObject("note") { put("type", "string"); put("description", "What the human should implement here.") }
+            putJsonObject("position") {
+              put("type", "integer"); put("description", "1-based position to insert at; default appends to the end.")
+            }
+          }
+          putJsonArray("required") { add("projectPath"); add("file"); add("note") }
+        }
+      }
       tool(
         "navigate_to",
         "Open a file in the IDE editor and move the caret to a line — e.g. to start the human at " +
@@ -189,6 +214,26 @@ class AvecMoiMcpService : Disposable {
         "Clear all registered handoffs for a project (e.g. the plan is finished).",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
+      tool(
+        "mark_handoff_done",
+        "Mark a handoff complete (by its 1-based number from list_handoffs) — e.g. after the human " +
+          "implemented it and you reviewed their work. It stays in the list, shown as done.",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+        "handoff" to buildJsonObject {
+          put("type", "integer")
+          put("description", "1-based handoff number (as shown by list_handoffs).")
+        },
+      )
+      tool(
+        "remove_handoff",
+        "Remove a handoff entirely (by its 1-based number from list_handoffs) — e.g. it no longer " +
+          "applies. Renumbers the rest, so re-list afterwards.",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+        "handoff" to buildJsonObject {
+          put("type", "integer")
+          put("description", "1-based handoff number (as shown by list_handoffs).")
+        },
+      )
     }
   }
 
@@ -206,9 +251,12 @@ class AvecMoiMcpService : Disposable {
         else textContent("Matched project '${proj.name}' at ${proj.basePath}", isError = false)
       }
       "register_handoffs" -> registerHandoffs(args)
+      "add_handoff" -> addHandoff(args)
       "navigate_to" -> navigateTo(args)
       "list_handoffs" -> listHandoffs(args)
       "clear_handoffs" -> clearHandoffs(args)
+      "mark_handoff_done" -> markHandoffDone(args)
+      "remove_handoff" -> removeHandoff(args)
       else -> textContent("Unknown tool: $name", isError = true)
     }
   }
@@ -259,6 +307,20 @@ class AvecMoiMcpService : Disposable {
     )
   }
 
+  private fun addHandoff(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val file = args?.get("file")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'file'.", isError = true)
+    val note = args?.get("note")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'note'.", isError = true)
+    val line = args?.get("line")?.jsonPrimitive?.intOrNull ?: 1
+    val at = args?.get("position")?.jsonPrimitive?.intOrNull?.let { it - 1 } // 1-based -> 0-based; null appends
+    val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note), at)
+    return textContent("Added handoff #$n in '${project.name}'.", isError = false)
+  }
+
   private fun navigateTo(args: JsonObject?): JsonObject {
     val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
     val project = resolveProject(path)
@@ -280,7 +342,10 @@ class AvecMoiMcpService : Disposable {
     val ring = project.service<AvecMoiRingService>()
     // reading .line touches the marker's document, so compute under a read lock (we're off the EDT).
     val text = ReadAction.compute<String, RuntimeException> {
-      ring.all().mapIndexed { i, h -> "${i + 1}. ${h.note}  (${h.file}:${h.line})" }.joinToString("\n")
+      ring.all().mapIndexed { i, h ->
+        val mark = if (h.done) "[done]" else "[todo]"
+        "${i + 1}. $mark ${h.note}  (${h.file}:${h.line})"
+      }.joinToString("\n")
     }
     return if (text.isBlank()) {
       textContent("No handoffs registered for project '${project.name}'.", isError = false)
@@ -295,6 +360,32 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     project.service<AvecMoiRingService>().clear()
     return textContent("Cleared all handoffs for project '${project.name}'.", isError = false)
+  }
+
+  private fun markHandoffDone(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val n = args?.get("handoff")?.jsonPrimitive?.intOrNull
+      ?: return textContent("Missing 'handoff' number.", isError = true)
+    return if (project.service<AvecMoiRingService>().markDone(n - 1, true)) {
+      textContent("Marked handoff #$n done in '${project.name}'.", isError = false)
+    } else {
+      textContent("No handoff #$n in '${project.name}'.", isError = true)
+    }
+  }
+
+  private fun removeHandoff(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val n = args?.get("handoff")?.jsonPrimitive?.intOrNull
+      ?: return textContent("Missing 'handoff' number.", isError = true)
+    return if (project.service<AvecMoiRingService>().remove(n - 1)) {
+      textContent("Removed handoff #$n from '${project.name}'.", isError = false)
+    } else {
+      textContent("No handoff #$n in '${project.name}'.", isError = true)
+    }
   }
 
   // --- JSON helpers ------------------------------------------------------------------------------
@@ -358,8 +449,8 @@ class AvecMoiMcpService : Disposable {
      * agent can detect it's on a stale tool list after a rebuild ("server has N, I see fewer").
      */
     val TOOL_NAMES = listOf(
-      "ping", "list_projects", "resolve_project", "register_handoffs", "navigate_to",
-      "list_handoffs", "clear_handoffs",
+      "ping", "list_projects", "resolve_project", "register_handoffs", "add_handoff", "navigate_to",
+      "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
     )
 
     /**
@@ -380,16 +471,31 @@ class AvecMoiMcpService : Disposable {
       features, staying as sharp and engaged as they choose to be.
 
       How to use it:
-      - Design the change and write COMPILING stubs (e.g. Kotlin `TODO("...")`, Python
-        `raise NotImplementedError`). Only hand off from a green build, so the human implements
-        into working scaffolding rather than debugging yours.
+      - Design the change and write stubs that at least parse / compile — no syntax errors (e.g.
+        Kotlin `TODO("...")`, Python `raise NotImplementedError`) — so the human implements into
+        working scaffolding rather than debugging yours. It need NOT be a fully green build: failing
+        tests (including placeholder tests meant to fail until implemented) and linter gripes are
+        fine. The bar is "no syntax errors", not "everything passes".
       - Call `register_handoffs` with the (file, line, note) spots where the human writes the real
         logic. Hand off the load-bearing, instructive parts — the actual thinking — and stub the
         rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
+      - To add a spot mid-flight, use `add_handoff` (appends one, preserving existing progress);
+        register_handoffs replaces the whole set and resets done-state.
       - Every handoff needs a specific note: what to implement here and why it matters.
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
-      - The human steps through the handoffs, implements them, and signals when ready (a "Step done"
-        message in the conversation). Then you read their work and review or continue.
+      - The human steps through the handoffs and implements them.
+
+      How the human signals you: the IDE gives the human quick actions (buttons/keys) that inject
+      specific messages into THIS conversation — that is their channel back to you (there is no way
+      for the IDE to push to you otherwise; you only ever hear from them through these). Treat the
+      injected messages as deliberate signals, not stray input:
+        - "Step done — review my implementation": they finished the current handoff; read what they
+          wrote (open the files, or `git diff` for just their change) and review or continue.
+        - a hint request: they're stuck and want a nudge, NOT for you to implement it.
+      Review happens only when the human asks for it via these actions — it is not automatic, not
+      required, and you should not nag. More quick actions may appear over time.
+      - As the human completes a handoff (and you review it), mark it with mark_handoff_done, or
+        remove_handoff if one no longer applies. The IDE shows todo vs done per row.
       - After a context reset or resume, call `list_handoffs` to recover what's currently registered
         rather than guessing. The ring lives in the IDE and is NOT saved across IDE restarts, so if
         list_handoffs comes back empty when you expected handoffs (the IDE restarted, or the human

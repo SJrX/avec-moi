@@ -34,6 +34,9 @@ class AvecMoiRingService(private val project: Project) : Disposable {
     val marker: RangeMarker?,
     private val fallbackLine: Int,
   ) {
+    /** Whether the human has completed this handoff. */
+    var done: Boolean = false
+
     /** Current 1-based line, tracking edits via the marker when it's still valid. */
     val line: Int
       get() {
@@ -97,6 +100,44 @@ class AvecMoiRingService(private val project: Project) : Disposable {
       cursor = -1
     }
     project.messageBus.syncPublisher(TOPIC).ringChanged()
+  }
+
+  /** Mark the handoff at [index] (0-based) done/undone. Returns false if out of range. */
+  fun markDone(index: Int, done: Boolean): Boolean {
+    val ok = synchronized(this) {
+      val h = handoffs.getOrNull(index) ?: return@synchronized false
+      h.done = done
+      true
+    }
+    if (ok) project.messageBus.syncPublisher(TOPIC).ringChanged()
+    return ok
+  }
+
+  /** Remove the handoff at [index] (0-based). Returns false if out of range. */
+  fun remove(index: Int): Boolean {
+    val ok = synchronized(this) {
+      if (index !in handoffs.indices) return@synchronized false
+      handoffs.removeAt(index).marker?.dispose()
+      if (cursor >= handoffs.size) cursor = handoffs.size - 1
+      true
+    }
+    if (ok) project.messageBus.syncPublisher(TOPIC).ringChanged()
+    return ok
+  }
+
+  /** Append a handoff (or insert at 0-based [at]) without touching existing entries or their done
+   *  state. Returns the new handoff's 1-based index. */
+  fun add(spec: HandoffSpec, at: Int?): Int {
+    val handoff = ReadAction.compute<Handoff, RuntimeException> {
+      Handoff(spec.file, spec.note, createMarker(spec.file, spec.line), spec.line)
+    }
+    val index = synchronized(this) {
+      val pos = at?.coerceIn(0, handoffs.size) ?: handoffs.size
+      handoffs.add(pos, handoff)
+      pos
+    }
+    project.messageBus.syncPublisher(TOPIC).ringChanged()
+    return index + 1
   }
 
   private fun createMarker(file: String, line1Based: Int): RangeMarker? {

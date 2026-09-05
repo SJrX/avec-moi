@@ -20,6 +20,8 @@ import com.intellij.openapi.ui.SimpleToolWindowPanel
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.ColoredTreeCellRenderer
+import com.intellij.ui.JBColor
+import com.intellij.ui.LayeredIcon
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
@@ -71,6 +73,8 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
       }
     })
   }
+
+  private val doneAttr = SimpleTextAttributes(SimpleTextAttributes.STYLE_STRIKEOUT, JBColor.GRAY)
 
   init {
     toolbar = createToolbar().component
@@ -137,13 +141,20 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
       row: Int,
       hasFocus: Boolean,
     ) {
-      when (val obj = (value as? DefaultMutableTreeNode)?.userObject) {
+      val node = value as? DefaultMutableTreeNode ?: return
+      when (val obj = node.userObject) {
         is AvecMoiRingService.Handoff -> {
-          icon = fileIconFor(obj.file)
-          append(obj.file.substringAfterLast('/'))
-          append(":${obj.line}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+          val order = root.getIndex(node) + 1
+          val fileIcon = fileIconFor(obj.file)
+          icon = if (obj.done) LayeredIcon(fileIcon, AllIcons.Nodes.DoneMark) else fileIcon
+          append("$order. ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+          append(obj.file.substringAfterLast('/'), if (obj.done) doneAttr else SimpleTextAttributes.REGULAR_ATTRIBUTES)
+          append(":${obj.line}", if (obj.done) doneAttr else SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
-        is Note -> append(obj.text.ifBlank { "(no note)" }, SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
+        is Note -> {
+          icon = AllIcons.General.Balloon
+          append(obj.text.ifBlank { "(no note)" }, SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
+        }
         else -> {}
       }
     }
