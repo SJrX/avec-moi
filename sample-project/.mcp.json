@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "avec-moi": {
+      "type": "http",
+      "url": "http://localhost:8282/mcp"
+    }
+  }
+}

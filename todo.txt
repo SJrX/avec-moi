@@ -1,0 +1,51 @@
+avec-moi — deferred / backlog
+=============================
+
+MCP server
+- [ ] Multi-project / port tracking: server is per-project on a FIXED port (8282) → collides
+      when multiple projects or IDEs are open at once. Options: pick a free port per project and
+      write it into that project's .mcp.json, or run one app-level server that routes by project.
+- [ ] Make the port configurable (settings) instead of the 8282 constant.
+
+Handoffs / ring (from first-run design feedback)
+- [x] Make `note` required in the register_handoffs schema (a note-less handoff is just a jump).
+- [x] Anchor rot: registered lines are now RangeMarkers (AvecMoiRingService) — follow edits within a
+      session. Also removes the need to re-send corrected lines after a handoff completes.
+- [ ] Cross-restart persistence: RangeMarkers don't survive IDE restart. If needed later, anchor by
+      sentinel comment (// AVEC-MOI: ...) or enclosing symbol name. Defer (litters code).
+- [ ] *** NEXT PASS, highest leverage *** Structured done-signal: make Step Done carry the CURRENT
+      handoff reference (id/note/file:line from the ring cursor + marker) so Claude knows WHICH
+      handoff finished and reads that region. Carry the reference, NOT the full diff (noisy/stale —
+      Claude reads the file). Connects SendToClaudeAction -> AvecMoiRingService; makes review the
+      path of least resistance without forcing a rigid step.
+- [ ] list_handoffs read-back tool: lets Claude query current registered handoffs (with marker-
+      tracked current lines) — recovery after context summarization/resume. Pair with the done-signal.
+- [ ] ping returns a version/capability string so an agent detects server drift ("v2, now has
+      navigate_to") instead of relying on the human to announce a rebuild.
+- [ ] Instructions polish: add "verify green immediately before each handoff" + the "the interesting
+      part is often not the obvious edit — look for the decision the change forces" example. (Skip
+      the heavier per-handoff verification-command field — more mechanism than warranted.)
+- [ ] Mark-handoff-done (explicit action, or infer from the stub being replaced).
+- [ ] VFS refresh on register_handoffs: Claude writes stub files externally; the IDE's Document may
+      be stale until a VFS refresh, so a just-created RangeMarker could anchor to old content.
+      Consider refreshing the VirtualFile before creating markers. (IntelliJ refreshes on focus, so
+      usually fine in practice, but not guaranteed.)
+
+Terminal push
+- [ ] When the target terminal can't be resolved unambiguously (no selected terminal, or several
+      tabs), prompt the user with a list of terminal tabs and let them pick which one `claude` is
+      in. Consider remembering the choice per project/session.
+- [ ] Classic-terminal fallback path (current code is reworked-engine only).
+- [ ] Use .useBracketedPasteMode() if the claude TUI ever needs paste semantics.
+- [ ] Configurable canned vocabulary / multiple buttons (Step Done, I'm stuck, Explain, Skip).
+
+Keyboard shortcuts
+- [ ] Don't hardcode default shortcuts (they stomp the user's keymap — Ctrl+Alt+Shift+N was
+      Go to Symbol). NextHandoff now ships with no default; users bind in Settings | Keymap.
+      Decide policy for SendToClaude/Step Done (currently Ctrl+Alt+Shift+D) — verify no collision
+      or drop the default too.
+
+Build / hygiene
+- [ ] stdlib bundling: currently bundling kotlin-stdlib; consider kotlin.stdlib.default.dependency
+      =false to use the IDE's stdlib (avoid classloader duplication). Working as-is, low priority.
+- [ ] Tighten untilBuild — the reworked terminal API is @ApiStatus.Experimental and may drift.
