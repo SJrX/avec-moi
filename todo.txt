@@ -6,6 +6,13 @@ MCP server
       when multiple projects or IDEs are open at once. Options: pick a free port per project and
       write it into that project's .mcp.json, or run one app-level server that routes by project.
 - [ ] Make the port configurable (settings) instead of the 8282 constant.
+- [x] Harden unknown-path responses: added a catch-all "/" context returning clean JSON 404, so
+      Claude Code's "Re-authenticate" OAuth probe of non-/mcp paths parses fine and reads as "no
+      auth required" instead of crashing on the JDK's HTML 404. (If a client ever wants explicit
+      OAuth-metadata, add minimal .well-known/oauth-* later — not needed for a no-auth server.)
+- [ ] Terminology: use "the agent" (provider-agnostic), not "Claude", in all user-facing text +
+      prompts. Sweep: INSTRUCTIONS, tool-window empty-state, plugin.xml action descriptions,
+      SendToClaudeAction class name.
 
 Handoffs / ring (from first-run design feedback)
 - [x] Make `note` required in the register_handoffs schema (a note-less handoff is just a jump).
@@ -20,8 +27,9 @@ Handoffs / ring (from first-run design feedback)
       path of least resistance without forcing a rigid step.
 - [ ] list_handoffs read-back tool: lets Claude query current registered handoffs (with marker-
       tracked current lines) — recovery after context summarization/resume. Pair with the done-signal.
-- [ ] ping returns a version/capability string so an agent detects server drift ("v2, now has
-      navigate_to") instead of relying on the human to announce a rebuild.
+- [x] ping returns version + build timestamp + current tool list (from a build-time generated
+      resource) so an agent detects server drift / a stale tool list instead of relying on the
+      human to announce a rebuild.
 - [ ] Instructions polish: add "verify green immediately before each handoff" + the "the interesting
       part is often not the obvious edit — look for the decision the change forces" example. (Skip
       the heavier per-handoff verification-command field — more mechanism than warranted.)
@@ -44,6 +52,10 @@ Keyboard shortcuts
       Go to Symbol). NextHandoff now ships with no default; users bind in Settings | Keymap.
       Decide policy for SendToClaude/Step Done (currently Ctrl+Alt+Shift+D) — verify no collision
       or drop the default too.
+
+Project settings (deferred)
+- [ ] Settings UI (project-level): override / customize the server instructions prompt; toggles that
+      just tweak the prompt (engagement level, hint-vs-help, etc.); configurable server port.
 
 Build / hygiene
 - [ ] stdlib bundling: currently bundling kotlin-stdlib; consider kotlin.stdlib.default.dependency

@@ -24,6 +24,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
+import java.util.Properties
 
 /**
  * Application-level (one per IDE process) MCP server for avec-moi. Hand-rolled JSON-RPC 2.0 over
@@ -43,16 +44,35 @@ class AvecMoiMcpService : Disposable {
 
   private var server: HttpServer? = null
 
+  private val buildInfo: Properties by lazy {
+    Properties().apply {
+      AvecMoiMcpService::class.java.getResourceAsStream("/avecmoi-build-info.properties")?.use { load(it) }
+    }
+  }
+
   @Synchronized
   fun startIfNeeded() {
     if (server != null) return
     try {
       val s = HttpServer.create(InetSocketAddress("127.0.0.1", PORT), 0)
       s.createContext("/mcp") { ex -> handle(ex) }
+      // Catch-all: any non-/mcp path (e.g. Claude Code's OAuth "re-authenticate" probe of
+      // /.well-known/oauth-*) gets a clean JSON 404 instead of the JDK's default HTML page, so the
+      // client's OAuth SDK parses it and treats us as "no auth required" rather than crashing on
+      // "Unrecognized token '<'". (We're a no-auth localhost server; there's nothing to authorize.)
+      s.createContext("/") { ex ->
+        try {
+          respond(ex, 404, "{\"error\":\"not_found\"}")
+        } catch (t: Throwable) {
+          thisLogger().warn("avec-moi MCP: root handler error", t)
+        } finally {
+          ex.close()
+        }
+      }
       s.executor = null
       s.start()
       server = s
-      thisLogger().info("avec-moi MCP server listening on http://127.0.0.1:$PORT/mcp")
+      thisLogger().info("avec-moi MCP seurver listening on http://127.0.0.1:$PORT/mcp")
     } catch (t: Throwable) {
       thisLogger().warn("avec-moi: failed to start MCP server on port $PORT", t)
     }
@@ -103,7 +123,7 @@ class AvecMoiMcpService : Disposable {
       putJsonObject("capabilities") { putJsonObject("tools") {} }
       putJsonObject("serverInfo") {
         put("name", "avec-moi")
-        put("version", "0.1.0")
+        put("version", buildInfo.getProperty("version", "0.1.0"))
       }
       put("instructions", INSTRUCTIONS)
     }
@@ -165,7 +185,7 @@ class AvecMoiMcpService : Disposable {
     val name = params?.get("name")?.jsonPrimitive?.contentOrNull
     val args = params?.get("arguments")?.jsonObject
     return when (name) {
-      "ping" -> textContent("pong from avec-moi 🎸", isError = false)
+      "ping" -> textContent(pingText(), isError = false)
       "list_projects" -> textContent(listProjectsText(), isError = false)
       "resolve_project" -> {
         val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
@@ -180,6 +200,12 @@ class AvecMoiMcpService : Disposable {
   }
 
   // --- project routing (by directory) ------------------------------------------------------------
+
+  private fun pingText(): String = buildString {
+    appendLine("pong from avec-moi 🎸")
+    appendLine("version: ${buildInfo.getProperty("version", "unknown")}")
+    append("tools (${TOOL_NAMES.size}): ${TOOL_NAMES.joinToString(", ")}")
+  }
 
   private fun listProjectsText(): String {
     val projects = ProjectManager.getInstance().openProjects
@@ -290,6 +316,12 @@ class AvecMoiMcpService : Disposable {
     const val PORT = 8282
 
     /**
+     * Names of the tools registered in [toolsListResult] — keep in sync. Surfaced by `ping` so an
+     * agent can detect it's on a stale tool list after a rebuild ("server has N, I see fewer").
+     */
+    val TOOL_NAMES = listOf("ping", "list_projects", "resolve_project", "register_handoffs", "navigate_to")
+
+    /**
      * Server-level guidance surfaced to the model on connect (MCP InitializeResult.instructions).
      * This is where avec-moi's conventions live — it travels with the server, so every session
      * gets it with no per-project setup. Guidance, not a rigid workflow: the model decides specifics.
@@ -298,6 +330,13 @@ class AvecMoiMcpService : Disposable {
       avec-moi is a collaborative-coding server: you (the AI) design and scaffold, the human
       implements the load-bearing logic. The point is to keep the human engaged and fluent in
       their own codebase — "with me," not "for me." Work WITH the human, not around them.
+
+      Serve the developer's desired level of engagement for THIS project — which may shift from
+      session to session, even task to task. avec-moi exists to serve the developer and their
+      changing whims; it is NOT here to force them to code or toil. Some things they'll want to own
+      fully; others they'll happily hand back to you — when unsure, ask how involved they want to be
+      and hand off more or less accordingly. The goal is to help them enjoy coding and shipping
+      features, staying as sharp and engaged as they choose to be.
 
       How to use it:
       - Design the change and write COMPILING stubs (e.g. Kotlin `TODO("...")`, Python

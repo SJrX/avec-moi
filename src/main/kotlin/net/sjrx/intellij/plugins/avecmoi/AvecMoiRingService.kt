@@ -6,6 +6,12 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
+import com.intellij.util.messages.Topic
+
+/** Fired (on the publisher's thread) whenever a project's handoff ring changes. */
+fun interface AvecMoiRingListener {
+  fun ringChanged()
+}
 
 /**
  * Per-project store of the current handoff ring: the ordered spots Claude left for the human to
@@ -50,6 +56,7 @@ class AvecMoiRingService(private val project: Project) : Disposable {
       handoffs.addAll(built)
       cursor = -1
     }
+    project.messageBus.syncPublisher(TOPIC).ringChanged()
   }
 
   @Synchronized
@@ -66,6 +73,22 @@ class AvecMoiRingService(private val project: Project) : Disposable {
     return handoffs[cursor]
   }
 
+  /** Step the circular cursor back and return the previous handoff, or null if the ring is empty. */
+  @Synchronized
+  fun prev(): Handoff? {
+    if (handoffs.isEmpty()) return null
+    cursor = if (cursor <= 0) handoffs.size - 1 else cursor - 1
+    return handoffs[cursor]
+  }
+
+  /** Snapshot of the ring, in registration order (for the tool-window panel). */
+  @Synchronized
+  fun all(): List<Handoff> = handoffs.toList()
+
+  /** Index of the last-visited handoff, or -1 if none visited yet. */
+  @Synchronized
+  fun cursorIndex(): Int = cursor
+
   private fun createMarker(file: String, line1Based: Int): RangeMarker? {
     val vf = AvecMoiNavigation.resolveFile(project, file) ?: return null
     val doc = FileDocumentManager.getInstance().getDocument(vf) ?: return null
@@ -79,5 +102,10 @@ class AvecMoiRingService(private val project: Project) : Disposable {
       handoffs.forEach { it.marker?.dispose() }
       handoffs.clear()
     }
+  }
+
+  companion object {
+    @JvmField
+    val TOPIC: Topic<AvecMoiRingListener> = Topic.create("avec-moi ring changed", AvecMoiRingListener::class.java)
   }
 }

@@ -8,6 +8,20 @@ import java.time.format.DateTimeFormatter.ofPattern
 
 fun properties(key: String) = project.findProperty(key).toString()
 
+fun runGit(vararg args: String): String = try {
+  val p = ProcessBuilder(listOf("git", *args)).directory(rootDir).redirectErrorStream(true).start()
+  p.inputStream.bufferedReader().readText().trim().also { p.waitFor() }
+} catch (_: Exception) {
+  ""
+}
+
+/** Short git sha plus a -dirty marker — a meaningful build id that only changes on real changes. */
+fun gitDescribe(): String {
+  val sha = runGit("rev-parse", "--short=8", "HEAD")
+  if (sha.isBlank()) return "nogit"
+  return sha + if (runGit("status", "--porcelain").isNotBlank()) "-dirty" else ""
+}
+
 val JavaVersion = 21
 
 fun getVersionNumber(): String {
@@ -15,7 +29,9 @@ fun getVersionNumber(): String {
   val minor = LocalDate.now().format(ofPattern("yyMMdd"))
   val build = System.getenv("BUILD_NUMBER") ?: 1
 
-  val branchName = System.getenv("BRANCH_NAME") ?: "undefined"
+  // On CI, BRANCH_NAME is set (a NNN.x release branch drops the suffix). Locally, fall back to the
+  // git sha (+ -dirty) instead of "undefined" so the suffix actually disambiguates builds.
+  val branchName = System.getenv("BRANCH_NAME") ?: gitDescribe()
 
   return if (branchName.matches(Regex("""[0-9]{3}\.x"""))) {
     "${major}.${minor}.${build}"
@@ -93,6 +109,23 @@ intellijPlatformTesting {
     }
   }
 }
+
+// Bake version + build timestamp into a resource so the `ping` MCP tool can report them (lets an
+// agent detect it's talking to a freshly-rebuilt server / a stale tool list).
+val avecMoiGeneratedResources = layout.buildDirectory.dir("generated-resources/avecmoi")
+val generateBuildInfo by tasks.registering {
+  val outDir = avecMoiGeneratedResources
+  val ver = version.toString()
+  inputs.property("version", ver) // regenerate only when the version (date/sha/dirty) actually changes
+  outputs.dir(outDir)
+  doLast {
+    val f = outDir.get().file("avecmoi-build-info.properties").asFile
+    f.parentFile.mkdirs()
+    f.writeText("version=$ver\n")
+  }
+}
+sourceSets["main"].resources.srcDir(avecMoiGeneratedResources)
+tasks.named("processResources") { dependsOn(generateBuildInfo) }
 
 val relativePath = "CHANGELOG"
 val filePath = Paths.get(project.layout.buildDirectory.get().asFile.path, relativePath)

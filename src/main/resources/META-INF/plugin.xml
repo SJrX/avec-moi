@@ -13,6 +13,9 @@
 
   <extensions defaultExtensionNs="com.intellij">
     <postStartupActivity implementation="net.sjrx.intellij.plugins.avecmoi.AvecMoiStartup"/>
+    <toolWindow id="avec-moi"
+                anchor="right"
+                factoryClass="net.sjrx.intellij.plugins.avecmoi.AvecMoiToolWindowFactory"/>
   </extensions>
 
   <actions>
