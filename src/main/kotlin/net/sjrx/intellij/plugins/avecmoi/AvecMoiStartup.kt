@@ -12,5 +12,6 @@ import com.intellij.openapi.startup.ProjectActivity
 class AvecMoiStartup : ProjectActivity {
   override suspend fun execute(project: Project) {
     service<AvecMoiMcpService>().startIfNeeded()
+    project.service<AvecMoiRingService>().materializeMarkers()
   }
 }

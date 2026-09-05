@@ -112,17 +112,13 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
     val activeGroup = DefaultMutableTreeNode(Group("Active Session", AllIcons.Nodes.Favorite))
     active?.let { activeGroup.add(sessionNode(it)) }
     root.add(activeGroup)
-    if (open.isNotEmpty()) {
-      DefaultMutableTreeNode(Group("Open Sessions", AllIcons.Nodes.ModuleGroup)).also { g ->
-        open.forEach { g.add(sessionNode(it)) }
-        root.add(g)
-      }
+    DefaultMutableTreeNode(Group("Open Sessions", AllIcons.Nodes.ModuleGroup)).also { g ->
+      open.forEach { g.add(sessionNode(it)) }
+      root.add(g)
     }
-    if (historical.isNotEmpty()) {
-      DefaultMutableTreeNode(Group("Historical Sessions", AllIcons.Vcs.History)).also { g ->
-        historical.forEach { g.add(sessionNode(it)) }
-        root.add(g)
-      }
+    DefaultMutableTreeNode(Group("Historical Sessions", AllIcons.Vcs.History)).also { g ->
+      historical.forEach { g.add(sessionNode(it)) }
+      root.add(g)
     }
 
     treeModel.reload()
@@ -226,6 +222,7 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
         is Group -> {
           icon = obj.icon
           append(obj.label, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+          append("  ${node.childCount}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
         is AvecMoiRingService.Session -> {
           icon = AllIcons.Nodes.Folder

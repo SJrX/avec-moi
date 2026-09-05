@@ -2,11 +2,16 @@ package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.State
+import com.intellij.openapi.components.Storage
+import com.intellij.openapi.components.StoragePathMacros
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.util.messages.Topic
+import com.intellij.util.xmlb.annotations.XCollection
 
 /** Fired (on the publisher's thread) whenever the sessions/handoffs change. */
 fun interface AvecMoiRingListener {
@@ -24,14 +29,16 @@ fun interface AvecMoiRingListener {
  * State is in-memory for now; workspace-level persistence is a follow-up.
  */
 @Service(Service.Level.PROJECT)
-class AvecMoiRingService(private val project: Project) : Disposable {
+@State(name = "AvecMoiSessions", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
+class AvecMoiRingService(private val project: Project) :
+  PersistentStateComponent<AvecMoiRingService.PersistedState>, Disposable {
 
   data class HandoffSpec(val file: String, val line: Int, val note: String)
 
   class Handoff(
     val file: String,
     val note: String,
-    val marker: RangeMarker?,
+    var marker: RangeMarker?,
     private val fallbackLine: Int,
   ) {
     var done: Boolean = false
@@ -213,6 +220,88 @@ class AvecMoiRingService(private val project: Project) : Disposable {
     if (doc.lineCount == 0) return null
     val line0 = (line1Based - 1).coerceIn(0, doc.lineCount - 1)
     return doc.createRangeMarker(doc.getLineStartOffset(line0), doc.getLineEndOffset(line0))
+  }
+
+  // --- persistence (workspace-level) ------------------------------------------------------------
+
+  class PersistedState {
+    @get:XCollection
+    var sessions: MutableList<SessionState> = mutableListOf()
+    var activeId: String? = null
+    var seq: Int = 0
+  }
+
+  class SessionState {
+    var id: String = ""
+    var name: String = ""
+    var branch: String? = null
+    var historical: Boolean = false
+
+    @get:XCollection
+    var handoffs: MutableList<HandoffState> = mutableListOf()
+  }
+
+  class HandoffState {
+    var file: String = ""
+    var line: Int = 1
+    var note: String = ""
+    var done: Boolean = false
+  }
+
+  override fun getState(): PersistedState {
+    val st = PersistedState()
+    synchronized(this) {
+      st.activeId = activeId
+      st.seq = seq
+      for (s in sessions) {
+        val ss = SessionState()
+        ss.id = s.id
+        ss.name = s.name
+        ss.branch = s.branch
+        ss.historical = s.historical
+        for (h in s.handoffs) {
+          val hs = HandoffState()
+          hs.file = h.file
+          hs.line = ReadAction.compute<Int, RuntimeException> { h.line }
+          hs.note = h.note
+          hs.done = h.done
+          ss.handoffs.add(hs)
+        }
+        st.sessions.add(ss)
+      }
+    }
+    return st
+  }
+
+  override fun loadState(state: PersistedState) {
+    synchronized(this) {
+      sessions.forEach { s -> s.handoffs.forEach { it.marker?.dispose() } }
+      sessions.clear()
+      activeId = state.activeId
+      seq = state.seq
+      for (ss in state.sessions) {
+        val s = Session(ss.id, ss.name, ss.branch)
+        s.historical = ss.historical
+        for (hs in ss.handoffs) {
+          val h = Handoff(hs.file, hs.note, null, hs.line)
+          h.done = hs.done
+          s.handoffs.add(h)
+        }
+        sessions.add(s)
+      }
+    }
+  }
+
+  /** Create RangeMarkers for loaded handoffs (documents may not be ready at loadState time). */
+  fun materializeMarkers() {
+    synchronized(this) {
+      for (s in sessions) for (h in s.handoffs) {
+        if (h.marker?.isValid != true) {
+          h.marker = ReadAction.compute<RangeMarker?, RuntimeException> { createMarker(h.file, h.line) }
+        }
+      }
+    }
+    changed()
   }
 
   override fun dispose() {
