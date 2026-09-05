@@ -1,10 +1,13 @@
 package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.sun.net.httpserver.HttpExchange
@@ -204,6 +207,12 @@ class AvecMoiMcpService : Disposable {
         },
       )
       tool(
+        "get_editor_context",
+        "Report where the human's cursor is (file, line, column) and any selected text in the active " +
+          "editor — e.g. to see what they're looking at when they ask for help.",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+      )
+      tool(
         "list_handoffs",
         "List the handoffs currently registered for a project — call after a context reset/resume " +
           "to recover state before re-registering.",
@@ -253,6 +262,7 @@ class AvecMoiMcpService : Disposable {
       "register_handoffs" -> registerHandoffs(args)
       "add_handoff" -> addHandoff(args)
       "navigate_to" -> navigateTo(args)
+      "get_editor_context" -> getEditorContext(args)
       "list_handoffs" -> listHandoffs(args)
       "clear_handoffs" -> clearHandoffs(args)
       "mark_handoff_done" -> markHandoffDone(args)
@@ -333,6 +343,30 @@ class AvecMoiMcpService : Disposable {
     } else {
       textContent("File not found in project '${project.name}': $file", isError = true)
     }
+  }
+
+  private fun getEditorContext(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    var result = "No active editor in '${project.name}'."
+    ApplicationManager.getApplication().invokeAndWait {
+      val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@invokeAndWait
+      val doc = editor.document
+      val file = FileDocumentManager.getInstance().getFile(doc)?.path ?: "(unknown file)"
+      val caret = editor.caretModel.logicalPosition
+      val sb = StringBuilder("File: $file\nCursor: line ${caret.line + 1}, column ${caret.column + 1}")
+      val sel = editor.selectionModel
+      if (sel.hasSelection()) {
+        val startLine = doc.getLineNumber(sel.selectionStart) + 1
+        val endLine = doc.getLineNumber(sel.selectionEnd) + 1
+        sb.append("\nSelection (lines $startLine-$endLine):\n${sel.selectedText}")
+      } else {
+        sb.append("\nNo selection.")
+      }
+      result = sb.toString()
+    }
+    return textContent(result, isError = false)
   }
 
   private fun listHandoffs(args: JsonObject?): JsonObject {
@@ -450,7 +484,7 @@ class AvecMoiMcpService : Disposable {
      */
     val TOOL_NAMES = listOf(
       "ping", "list_projects", "resolve_project", "register_handoffs", "add_handoff", "navigate_to",
-      "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
+      "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
     )
 
     /**
