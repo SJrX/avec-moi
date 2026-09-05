@@ -54,6 +54,12 @@ class AvecMoiMcpService : Disposable {
 
   fun anyContact(): Boolean = anyContact
 
+  /** Reset the (app-level, cross-test) connection flag so a test can observe a clean false→true. */
+  @org.jetbrains.annotations.TestOnly
+  internal fun resetContactForTest() {
+    anyContact = false
+  }
+
   private val buildInfo: Properties by lazy {
     Properties().apply {
       AvecMoiMcpService::class.java.getResourceAsStream("/avecmoi-build-info.properties")?.use { load(it) }
@@ -71,6 +77,7 @@ class AvecMoiMcpService : Disposable {
       // client's OAuth SDK parses it and treats us as "no auth required" rather than crashing on
       // "Unrecognized token '<'". (We're a no-auth localhost server; there's nothing to authorize.)
       s.createContext("/") { ex ->
+        anyContact = true // even an OAuth "re-authenticate" probe means a client is trying to connect
         try {
           respond(ex, 404, "{\"error\":\"not_found\"}")
         } catch (t: Throwable) {
@@ -89,6 +96,7 @@ class AvecMoiMcpService : Disposable {
   }
 
   private fun handle(ex: HttpExchange) {
+    anyContact = true // any MCP request (initialize, tools/list, reconnect, …) = a client is here
     try {
       when (ex.requestMethod) {
         "POST" -> handlePost(ex)
@@ -104,20 +112,35 @@ class AvecMoiMcpService : Disposable {
 
   private fun handlePost(ex: HttpExchange) {
     val body = ex.requestBody.readBytes().toString(StandardCharsets.UTF_8)
+    val r = handleMcpPost(body)
+    respond(ex, r.status, r.body)
+  }
+
+  /** The HTTP status + JSON body to send back for a POST /mcp. */
+  internal data class McpHttpResult(val status: Int, val body: String?)
+
+  /**
+   * Transport-independent handler for one POST /mcp request body: parse the JSON-RPC envelope, route
+   * the method, and return the status + response body. Both [handlePost] (the real HttpServer) and the
+   * tests call this, so the dispatch — and the "a client is present" signal — is exercised without
+   * binding a socket.
+   */
+  internal fun handleMcpPost(body: String): McpHttpResult {
+    anyContact = true // a POST to /mcp = a client is here (initialize, tools/list, reconnect, …)
     val req = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull()
-      ?: return respond(ex, 400, null)
+      ?: return McpHttpResult(400, null)
 
     val method = req["method"]?.jsonPrimitive?.contentOrNull
     val id = req["id"]
-    if (id == null) return respond(ex, 202, null) // notification
+    if (id == null) return McpHttpResult(202, null) // notification
 
     val result: JsonElement = when (method) {
       "initialize" -> initializeResult(req)
       "tools/list" -> toolsListResult()
       "tools/call" -> toolsCallResult(req)
-      else -> return respond(ex, 200, errorResponse(id, -32601, "Method not found: $method"))
+      else -> return McpHttpResult(200, errorResponse(id, -32601, "Method not found: $method"))
     }
-    respond(ex, 200, buildJsonObject {
+    return McpHttpResult(200, buildJsonObject {
       put("jsonrpc", "2.0")
       put("id", id)
       put("result", result)
@@ -336,10 +359,7 @@ class AvecMoiMcpService : Disposable {
       .filter { (_, base) -> norm == base || norm.startsWith("$base/") }
       .maxByOrNull { (_, base) -> base.length }
       ?.first
-      ?.also {
-        it.service<AvecMoiRingService>().recordContact()
-        anyContact = true
-      }
+      ?.also { it.service<AvecMoiRingService>().recordContact() }
   }
 
   private fun registerHandoffs(args: JsonObject?): JsonObject {

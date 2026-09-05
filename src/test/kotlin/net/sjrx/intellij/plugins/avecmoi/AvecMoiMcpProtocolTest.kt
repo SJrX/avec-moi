@@ -1,0 +1,101 @@
+package net.sjrx.intellij.plugins.avecmoi
+
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
+/**
+ * The JSON-RPC wire behaviour of the MCP server, exercised through the real dispatch seam. No mocks:
+ * the request goes in as literal JSON and the real handler answers. This is where the "reconnect
+ * didn't flip the indicator" bug lived, so that scenario is pinned first.
+ */
+class AvecMoiMcpProtocolTest : AbstractAvecMoiTest() {
+
+  fun testInitializePostAloneMarksAnAgentAsConnected() {
+    // Fixture Setup — the reconnect scenario: a handshake with no project tool call
+    assertFalse("precondition: setUp reset the flag", mcp.anyContact())
+
+    // Exercise SUT
+    // language=JSON
+    call("initialize", """{ "protocolVersion": "2025-06-18" }""")
+
+    // Verification
+    assertTrue("initialize alone must flip the connection indicator", mcp.anyContact())
+  }
+
+  fun testInitializeReportsServerIdentityAndInstructions() {
+    // Exercise SUT
+    // language=JSON
+    val result = call("initialize", """{ "protocolVersion": "2025-06-18" }""")
+
+    // Verification
+    assertEquals("2025-06-18", result["protocolVersion"]!!.jsonPrimitive.content)
+    assertEquals("avec-moi", result["serverInfo"]!!.jsonObject["name"]!!.jsonPrimitive.content)
+    assertNotNull("connect-time guidance must travel with the server", result["instructions"])
+  }
+
+  fun testToolsListAdvertisesEveryDeclaredToolWithAnInputSchema() {
+    // Exercise SUT
+    val result = call("tools/list")
+
+    // Verification
+    val tools = result["tools"]!!.jsonArray
+    val names = tools.map { it.jsonObject["name"]!!.jsonPrimitive.content }.toSet()
+    assertEquals(AvecMoiMcpService.TOOL_NAMES.toSet(), names) // the advertised set == the declared set
+    tools.forEach { t ->
+      assertNotNull("tool ${t.jsonObject["name"]} is missing an inputSchema", t.jsonObject["inputSchema"])
+    }
+  }
+
+  fun testPingToolReturnsPong() {
+    // Exercise SUT
+    // language=JSON
+    val result = call("tools/call", """{ "name": "ping", "arguments": {} }""")
+
+    // Verification
+    val text = result["content"]!!.jsonArray[0].jsonObject["text"]!!.jsonPrimitive.content
+    assertTrue("ping should pong, was: $text", text.contains("pong"))
+    assertFalse(result["isError"]!!.jsonPrimitive.boolean)
+  }
+
+  fun testUnknownMethodYieldsJsonRpcMethodNotFound() {
+    // Exercise SUT
+    // language=JSON
+    val res = post("""{ "jsonrpc": "2.0", "id": 9, "method": "no/such" }""")
+
+    // Verification
+    assertEquals(200, res.status)
+    val error = Json.parseToJsonElement(res.body!!).jsonObject["error"]!!.jsonObject
+    assertEquals(-32601, error["code"]!!.jsonPrimitive.int)
+  }
+
+  fun testUnknownToolReportsAToolLevelError() {
+    // Exercise SUT — a valid tools/call for a tool that doesn't exist
+    // language=JSON
+    val result = call("tools/call", """{ "name": "does_not_exist", "arguments": {} }""")
+
+    // Verification — JSON-RPC succeeds, but the MCP result is flagged isError
+    assertTrue(result["isError"]!!.jsonPrimitive.boolean)
+  }
+
+  fun testMalformedJsonBodyIsRejectedWith400() {
+    // Exercise SUT — deliberately not JSON
+    val res = post("this is not json")
+
+    // Verification
+    assertEquals(400, res.status)
+  }
+
+  fun testNotificationWithoutIdIsAcceptedWithNoBody() {
+    // Exercise SUT — a JSON-RPC notification carries no id and expects no response
+    // language=JSON
+    val res = post("""{ "jsonrpc": "2.0", "method": "notifications/initialized" }""")
+
+    // Verification
+    assertEquals(202, res.status)
+    assertNull(res.body)
+  }
+}

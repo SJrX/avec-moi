@@ -81,6 +81,9 @@ dependencies {
 
   testImplementation("junit:junit:4.13.2")
   testImplementation("org.opentest4j:opentest4j:1.3.0")
+  // Same story as main (see above): compile the protocol tests against the JSON DOM API, but let the
+  // platform supply the impl at runtime — avoids a second copy of kotlinx-serialization on the classpath.
+  testCompileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
   intellijPlatform {
     // Since 2025.3 (253) the separate IC/IU distributions were merged into a single
