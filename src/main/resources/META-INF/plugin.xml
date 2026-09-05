@@ -15,6 +15,7 @@
     <postStartupActivity implementation="net.sjrx.intellij.plugins.avecmoi.AvecMoiStartup"/>
     <toolWindow id="Avec Moi"
                 anchor="right"
+                icon="/META-INF/pluginIcon.svg"
                 factoryClass="net.sjrx.intellij.plugins.avecmoi.AvecMoiToolWindowFactory"/>
   </extensions>
 
