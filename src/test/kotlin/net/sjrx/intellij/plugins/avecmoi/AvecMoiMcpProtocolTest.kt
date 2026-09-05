@@ -80,6 +80,42 @@ class AvecMoiMcpProtocolTest : AbstractAvecMoiTest() {
     assertFalse(result["isError"]!!.jsonPrimitive.boolean)
   }
 
+  fun testTheResponseEchoesANumericRequestId() {
+    // Exercise SUT — a client matches responses to requests by id, so it must come back unchanged
+    // language=JSON
+    val res = post("""{ "jsonrpc": "2.0", "id": 42, "method": "tools/list" }""")
+
+    // Verification
+    assertEquals(200, res.status)
+    assertEquals(42, Json.parseToJsonElement(res.body!!).jsonObject["id"]!!.jsonPrimitive.int)
+  }
+
+  fun testTheResponseEchoesAStringRequestId() {
+    // Exercise SUT — ids may be strings; the type must be preserved, not coerced
+    // language=JSON
+    val res = post("""{ "jsonrpc": "2.0", "id": "abc-1", "method": "tools/list" }""")
+
+    // Verification
+    assertEquals("abc-1", Json.parseToJsonElement(res.body!!).jsonObject["id"]!!.jsonPrimitive.content)
+  }
+
+  fun testInitializeDefaultsTheProtocolVersionWhenTheClientOmitsIt() {
+    // Exercise SUT — no params at all
+    val result = call("initialize")
+
+    // Verification — falls back to the server's supported version rather than echoing null
+    assertEquals("2025-06-18", result["protocolVersion"]!!.jsonPrimitive.content)
+  }
+
+  fun testToolsCallWithoutAToolNameIsAToolError() {
+    // Exercise SUT
+    // language=JSON
+    val result = call("tools/call", """{ "arguments": {} }""")
+
+    // Verification
+    assertTrue(result.isError())
+  }
+
   fun testUnknownMethodYieldsJsonRpcMethodNotFound() {
     // Exercise SUT
     // language=JSON

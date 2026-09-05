@@ -73,6 +73,19 @@ class AvecMoiRingServiceEdgeCasesTest : AbstractAvecMoiTest() {
     assertTrue("cursor must stay within bounds", ring.cursorIndex() < ring.all().size)
   }
 
+  fun testRemovingAHandoffBeforeTheCursorKeepsTheCursorOnTheSameItem() {
+    // Fixture Setup — cursor parked on "c"
+    ring.set(listOf(spec(note = "a"), spec(note = "b"), spec(note = "c"), spec(note = "d")))
+    ring.next(); ring.next(); ring.next()
+    assertEquals("c", ring.all()[ring.cursorIndex()].note)
+
+    // Exercise SUT — remove a handoff BEFORE the cursor
+    ring.remove(0)
+
+    // Verification — "current" must still be "c", not silently jump to "d"
+    assertEquals("c", ring.all()[ring.cursorIndex()].note)
+  }
+
   fun testCompletingTheActiveSessionPromotesAnotherOpenSessionToActive() {
     // Fixture Setup — two open sessions; the second is active
     val first = ring.createSession("First", null)

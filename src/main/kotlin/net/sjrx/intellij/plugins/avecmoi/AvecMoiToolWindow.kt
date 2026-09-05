@@ -340,29 +340,30 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
    */
   private inner class ConnectionStatusAction : AnAction(), DumbAware {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    private fun currentState(): AvecMoiConnectionState = AvecMoiConnectionState.of(
+      project.service<AvecMoiRingService>().isContacted(),
+      service<AvecMoiMcpService>().anyContact(),
+    )
+
     override fun update(e: AnActionEvent) {
-      val here = project.service<AvecMoiRingService>().isContacted()
-      val any = service<AvecMoiMcpService>().anyContact()
-      e.presentation.icon = when {
-        here -> statusHere
-        any -> statusElsewhere
-        else -> statusRed
+      e.presentation.icon = when (currentState()) {
+        AvecMoiConnectionState.HERE -> statusHere
+        AvecMoiConnectionState.ELSEWHERE -> statusElsewhere
+        AvecMoiConnectionState.NONE -> statusRed
       }
-      e.presentation.text = when {
-        here -> "Connected"
-        any -> "Connected (other project)"
-        else -> "No Connection"
+      e.presentation.text = when (currentState()) {
+        AvecMoiConnectionState.HERE -> "Connected"
+        AvecMoiConnectionState.ELSEWHERE -> "Connected (other project)"
+        AvecMoiConnectionState.NONE -> "No Connection"
       }
     }
 
     override fun actionPerformed(e: AnActionEvent) {
-      val here = project.service<AvecMoiRingService>().isContacted()
-      val any = service<AvecMoiMcpService>().anyContact()
-      val msg = when {
-        here -> "An agent has worked with Avec Moi in this project this session."
-        any -> "An agent is connected, but hasn't targeted THIS project yet.\n\n" +
+      val msg = when (currentState()) {
+        AvecMoiConnectionState.HERE -> "An agent has worked with Avec Moi in this project this session."
+        AvecMoiConnectionState.ELSEWHERE -> "An agent is connected, but hasn't targeted THIS project yet.\n\n" +
           "Make sure it calls tools with this project's path (its cwd):\n  ${project.basePath}"
-        else -> "No agent has contacted Avec Moi this session.\n\n" +
+        AvecMoiConnectionState.NONE -> "No agent has contacted Avec Moi this session.\n\n" +
           "To connect, run:\n  claude mcp add --scope user --transport http avec-moi http://localhost:8282/mcp\n" +
           "then start (or restart) your agent session."
       }

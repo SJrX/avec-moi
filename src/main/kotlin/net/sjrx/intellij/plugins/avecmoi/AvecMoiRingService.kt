@@ -182,6 +182,8 @@ class AvecMoiRingService(private val project: Project) :
       val s = activeLocked() ?: return@synchronized false
       if (index !in s.handoffs.indices) return@synchronized false
       s.handoffs.removeAt(index).marker?.dispose()
+      // Keep the cursor on the same logical handoff: removing one *before* it shifts it left by one.
+      if (index < s.cursor) s.cursor--
       if (s.cursor >= s.handoffs.size) s.cursor = s.handoffs.size - 1
       true
     }
