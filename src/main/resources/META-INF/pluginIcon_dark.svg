@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>Human and AI pair programming icon dark theme</title>
+
+  <!-- code -->
+  <path d="M13.5 7.5L10 11L13.5 14.5" stroke="#3592C4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 7L17.5 15" stroke="#AFB1B3" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M26.5 7.5L30 11L26.5 14.5" stroke="#499C54" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- human -->
+  <circle cx="9.5" cy="20" r="4.7" fill="#3592C4"/>
+  <path d="M3.5 31C3.5 26.86 6.86 23.5 11 23.5H12C16.14 23.5 19.5 26.86 19.5 31V33H3.5V31Z" fill="#3592C4"/>
+  <path d="M5.5 28.5C5.5 27.67 6.17 27 7 27H15C15.83 27 16.5 27.67 16.5 28.5V33H5.5V28.5Z" fill="#CED3DC"/>
+  <circle cx="11" cy="30.2" r="0.95" fill="#5E6673"/>
+
+  <!-- robot -->
+  <rect x="22.5" y="16.2" width="11" height="7.6" rx="3.6" fill="#6B57FF"/>
+  <rect x="25.2" y="18.45" width="5.6" height="3.1" rx="1.55" fill="#0F1115"/>
+  <circle cx="26.7" cy="20" r="0.55" fill="#7EE787"/>
+  <circle cx="29.3" cy="20" r="0.55" fill="#7EE787"/>
+  <rect x="27.55" y="14.2" width="0.9" height="2.2" rx="0.45" fill="#6B57FF"/>
+  <circle cx="28" cy="13.05" r="1.05" fill="#7EE787"/>
+
+  <path d="M21 31C21 26.86 24.36 23.5 28.5 23.5H29.5C33.64 23.5 37 26.86 37 31V33H21V31Z" fill="#6B57FF"/>
+  <path d="M23.1 28.5C23.1 27.67 23.77 27 24.6 27H32.6C33.43 27 34.1 27.67 34.1 28.5V33H23.1V28.5Z" fill="#CED3DC"/>
+  <circle cx="28.6" cy="30.2" r="0.95" fill="#5E6673"/>
+
+  <!-- robot chest circuits -->
+  <path d="M28 24.9V27.1" stroke="#7EE787" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M29.8 25.4V27.1" stroke="#7EE787" stroke-width="1.4" stroke-linecap="round"/>
+  <circle cx="28" cy="24.2" r="0.8" fill="#7EE787"/>
+  <circle cx="29.8" cy="24.7" r="0.8" fill="#7EE787"/>
+</svg>

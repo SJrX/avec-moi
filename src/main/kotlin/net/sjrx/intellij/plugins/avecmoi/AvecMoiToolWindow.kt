@@ -2,6 +2,8 @@ package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.icons.AllIcons
 import com.intellij.ide.CommonActionsManager
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.util.Disposer
 import com.intellij.ide.DefaultTreeExpander
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionToolbar
@@ -30,9 +32,12 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
+import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.Icon
+import javax.swing.JPanel
+import javax.swing.Timer
 import javax.swing.JComponent
 import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
@@ -50,6 +55,10 @@ class AvecMoiToolWindowFactory : ToolWindowFactory, DumbAware {
       AvecMoiRingService.TOPIC,
       AvecMoiRingListener { ApplicationManager.getApplication().invokeLater { panel.reload() } },
     )
+
+    // The connection indicator changes without user interaction, so poll the toolbar to refresh it.
+    val timer = Timer(2000) { panel.refreshToolbar() }.apply { isRepeats = true; start() }
+    Disposer.register(toolWindow.disposable, Disposable { timer.stop() })
 
     // Keep displayed line numbers live as the human edits (the renderer reads live RangeMarkers).
     EditorFactory.getInstance().eventMulticaster.addDocumentListener(
@@ -74,6 +83,11 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
   private val doneAttr = SimpleTextAttributes(SimpleTextAttributes.STYLE_STRIKEOUT, JBColor.GRAY)
   private var activeSessionId: String? = null
 
+  private val statusHere = AllIcons.RunConfigurations.TestState.Green2
+  private val statusElsewhere = AllIcons.RunConfigurations.TestState.Yellow2
+  private val statusRed = AllIcons.RunConfigurations.TestState.Red2
+  private var toolbarRef: ActionToolbar? = null
+
   private val tree = Tree(treeModel).apply {
     isRootVisible = false
     showsRootHandles = true
@@ -86,7 +100,7 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
   }
 
   init {
-    toolbar = createToolbar().component
+    toolbar = buildToolbar()
     setContent(JBScrollPane(tree))
     PopupHandler.installFollowingSelectionTreePopup(
       tree,
@@ -129,6 +143,11 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
   /** Repaint so the renderer re-reads live marker line numbers after the human edits. */
   fun refreshLines() {
     tree.repaint()
+  }
+
+  /** Re-evaluate toolbar actions (drives the live agent-connection indicator). */
+  fun refreshToolbar() {
+    toolbarRef?.updateActionsAsync()
   }
 
   private fun sessionNode(session: AvecMoiRingService.Session): DefaultMutableTreeNode {
@@ -188,11 +207,11 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
     AvecMoiNavigation.openAt(project, handoff.file, line)
   }
 
-  private fun createToolbar(): ActionToolbar {
+  private fun buildToolbar(): JComponent {
     val expander = DefaultTreeExpander(tree)
     val common = CommonActionsManager.getInstance()
     val am = ActionManager.getInstance()
-    val group = DefaultActionGroup().apply {
+    val mainGroup = DefaultActionGroup().apply {
       add(TerminalSelectorAction())
       addSeparator()
       am.getAction("avecmoi.StepDone")?.let { add(it) }
@@ -204,7 +223,15 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
       add(common.createExpandAllAction(expander, tree))
       add(common.createCollapseAllAction(expander, tree))
     }
-    return am.createActionToolbar("AvecMoiRing", group, true).also { it.targetComponent = tree }
+    val mainToolbar = am.createActionToolbar("AvecMoiRing", mainGroup, true).also { it.targetComponent = tree }
+    // Right-aligned status indicator in its own toolbar.
+    val statusToolbar = am.createActionToolbar("AvecMoiStatus", DefaultActionGroup(ConnectionStatusAction()), true)
+      .also { it.targetComponent = tree }
+    toolbarRef = statusToolbar
+    return JPanel(BorderLayout()).apply {
+      add(mainToolbar.component, BorderLayout.CENTER)
+      add(statusToolbar.component, BorderLayout.EAST)
+    }
   }
 
   private inner class HandoffCellRenderer : ColoredTreeCellRenderer() {
@@ -304,6 +331,42 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
       val handoff = (if (forward) ring.next() else ring.prev()) ?: return
       navigate(handoff)
       selectActiveHandoff(ring.cursorIndex())
+    }
+  }
+
+  /**
+   * Agent-connection indicator: green = an agent has talked to THIS project this session, yellow =
+   * an agent is active but only in another project, grey = nothing has connected (click for how to).
+   */
+  private inner class ConnectionStatusAction : AnAction(), DumbAware {
+    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    override fun update(e: AnActionEvent) {
+      val here = project.service<AvecMoiRingService>().isContacted()
+      val any = service<AvecMoiMcpService>().anyContact()
+      e.presentation.icon = when {
+        here -> statusHere
+        any -> statusElsewhere
+        else -> statusRed
+      }
+      e.presentation.text = when {
+        here -> "Connected"
+        any -> "Connected (other project)"
+        else -> "No Connection"
+      }
+    }
+
+    override fun actionPerformed(e: AnActionEvent) {
+      val here = project.service<AvecMoiRingService>().isContacted()
+      val any = service<AvecMoiMcpService>().anyContact()
+      val msg = when {
+        here -> "An agent has worked with Avec Moi in this project this session."
+        any -> "An agent is connected, but hasn't targeted THIS project yet.\n\n" +
+          "Make sure it calls tools with this project's path (its cwd):\n  ${project.basePath}"
+        else -> "No agent has contacted Avec Moi this session.\n\n" +
+          "To connect, run:\n  claude mcp add --scope user --transport http avec-moi http://localhost:8282/mcp\n" +
+          "then start (or restart) your agent session."
+      }
+      Messages.showInfoMessage(project, msg, "Avec Moi — Agent Connection")
     }
   }
 

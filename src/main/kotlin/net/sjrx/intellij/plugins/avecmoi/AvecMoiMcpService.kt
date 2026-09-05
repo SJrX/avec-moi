@@ -48,6 +48,12 @@ class AvecMoiMcpService : Disposable {
 
   private var server: HttpServer? = null
 
+  /** Whether any agent tool call has targeted any project this IDE session (runtime only). */
+  @Volatile
+  private var anyContact: Boolean = false
+
+  fun anyContact(): Boolean = anyContact
+
   private val buildInfo: Properties by lazy {
     Properties().apply {
       AvecMoiMcpService::class.java.getResourceAsStream("/avecmoi-build-info.properties")?.use { load(it) }
@@ -330,6 +336,10 @@ class AvecMoiMcpService : Disposable {
       .filter { (_, base) -> norm == base || norm.startsWith("$base/") }
       .maxByOrNull { (_, base) -> base.length }
       ?.first
+      ?.also {
+        it.service<AvecMoiRingService>().recordContact()
+        anyContact = true
+      }
   }
 
   private fun registerHandoffs(args: JsonObject?): JsonObject {

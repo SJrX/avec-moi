@@ -61,6 +61,16 @@ class AvecMoiRingService(private val project: Project) :
   private var activeId: String? = null
   private var seq: Int = 0
 
+  /** Whether an agent tool call has targeted this project since it was opened (runtime, not persisted). */
+  @Volatile
+  private var contacted: Boolean = false
+
+  fun recordContact() {
+    contacted = true
+  }
+
+  fun isContacted(): Boolean = contacted
+
   private fun changed() = project.messageBus.syncPublisher(TOPIC).ringChanged()
 
   // --- session management -----------------------------------------------------------------------
