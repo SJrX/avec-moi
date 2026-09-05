@@ -30,7 +30,7 @@ class NextHandoffAction : AnAction() {
     }
 
     if (handoff.note.isNotBlank()) {
-      WindowManager.getInstance().getStatusBar(project)?.info = "avec-moi ▸ ${handoff.note}"
+      WindowManager.getInstance().getStatusBar(project)?.info = "Avec Moi ▸ ${handoff.note}"
     }
   }
 }

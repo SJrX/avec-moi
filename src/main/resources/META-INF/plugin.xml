@@ -13,14 +13,14 @@
 
   <extensions defaultExtensionNs="com.intellij">
     <postStartupActivity implementation="net.sjrx.intellij.plugins.avecmoi.AvecMoiStartup"/>
-    <toolWindow id="avec-moi"
+    <toolWindow id="Avec Moi"
                 anchor="right"
                 factoryClass="net.sjrx.intellij.plugins.avecmoi.AvecMoiToolWindowFactory"/>
   </extensions>
 
   <actions>
     <!-- Grouped under a single Tools submenu (name TBD — see project decision). -->
-    <group id="avecmoi.MenuGroup" text="avec-moi" popup="true">
+    <group id="avecmoi.MenuGroup" text="Avec Moi" popup="true">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
       <action id="avecmoi.StepDone"
               class="net.sjrx.intellij.plugins.avecmoi.StepDoneAction"
