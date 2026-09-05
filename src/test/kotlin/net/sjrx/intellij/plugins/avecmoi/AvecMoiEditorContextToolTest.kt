@@ -22,6 +22,13 @@ class AvecMoiEditorContextToolTest : AbstractAvecMoiTest() {
     assertTrue(context.contains("No selection"))
   }
 
+  fun testReportsNoActiveEditorWhenNothingIsOpen() {
+    // Fixture Setup — no file configured, so there's no selected editor
+
+    // Verification — a clean message, not an error or a crash
+    assertTrue(editorContext().contains("No active editor"))
+  }
+
   fun testReportsTheSelectedTextAndItsLineRange() {
     // Fixture Setup — select the whole 2nd line
     myFixture.configureByText("Sample.kt", "line one\nline two\nline three\n")
