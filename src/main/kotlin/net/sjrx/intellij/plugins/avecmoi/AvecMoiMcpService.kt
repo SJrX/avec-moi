@@ -352,13 +352,10 @@ class AvecMoiMcpService : Disposable {
 
   /** Match a directory (e.g. the agent's cwd) to the open project whose base dir contains it; deepest wins. */
   private fun resolveProject(path: String?): Project? {
-    if (path.isNullOrBlank()) return null
-    val norm = path.trimEnd('/')
-    return ProjectManager.getInstance().openProjects
-      .mapNotNull { p -> p.basePath?.trimEnd('/')?.let { base -> p to base } }
-      .filter { (_, base) -> norm == base || norm.startsWith("$base/") }
-      .maxByOrNull { (_, base) -> base.length }
-      ?.first
+    val candidates = ProjectManager.getInstance().openProjects
+      .mapNotNull { p -> p.basePath?.let { base -> p to base.trimEnd('/') } }
+    val winner = bestMatchingBasePath(candidates.map { it.second }, path) ?: return null
+    return candidates.firstOrNull { it.second == winner }?.first
       ?.also { it.service<AvecMoiRingService>().recordContact() }
   }
 
@@ -631,6 +628,22 @@ class AvecMoiMcpService : Disposable {
 
   companion object {
     const val PORT = 8282
+
+    /**
+     * From a set of project base directories, pick the one that best contains [path]: the path must
+     * equal a base or sit strictly beneath it (on a `/` boundary, so `/x/proj` does NOT match the
+     * directory `/x/proj-other`), and the deepest such base wins (nested projects). Base paths are
+     * matched with any trailing slash ignored. Returns the winning base (trimmed), or null for no
+     * match / a null-or-blank path. Pure and platform-free so the routing rule is unit-testable.
+     */
+    internal fun bestMatchingBasePath(basePaths: List<String>, path: String?): String? {
+      if (path.isNullOrBlank()) return null
+      val norm = path.trimEnd('/')
+      return basePaths
+        .map { it.trimEnd('/') }
+        .filter { base -> norm == base || norm.startsWith("$base/") }
+        .maxByOrNull { it.length }
+    }
 
     /**
      * Names of the tools registered in [toolsListResult] — keep in sync. Surfaced by `ping` so an

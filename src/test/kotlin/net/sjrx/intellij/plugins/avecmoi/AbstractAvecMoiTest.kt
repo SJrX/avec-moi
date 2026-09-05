@@ -4,7 +4,10 @@ import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Base for avec-moi tests. Runs on the real IntelliJ platform via [BasePlatformTestCase] — the
@@ -60,4 +63,22 @@ abstract class AbstractAvecMoiTest : BasePlatformTestCase() {
     assertNull("Unexpected JSON-RPC error for $method: ${obj["error"]}", obj["error"])
     return obj["result"]!!.jsonObject
   }
+
+  /** The path an agent would pass as `projectPath` to reach the fixture project (its cwd). */
+  protected val projectPath: String
+    get() = project.basePath ?: error("test fixture project has no basePath")
+
+  /** Invoke an MCP tool by name and return its result object (the one carrying `content` / `isError`). */
+  protected fun callTool(name: String, arguments: String): JsonObject {
+    // language=JSON
+    val params = """{ "name": "$name", "arguments": $arguments }"""
+    return call("tools/call", params)
+  }
+
+  /** The text of an MCP tool result's first content block. */
+  protected fun JsonObject.contentText(): String =
+    getValue("content").jsonArray[0].jsonObject.getValue("text").jsonPrimitive.content
+
+  /** Whether an MCP tool result is flagged as an error. */
+  protected fun JsonObject.isError(): Boolean = getValue("isError").jsonPrimitive.boolean
 }
