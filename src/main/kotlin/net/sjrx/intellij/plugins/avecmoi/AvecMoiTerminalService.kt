@@ -1,6 +1,7 @@
 package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTab
@@ -40,8 +41,20 @@ class AvecMoiTerminalService(private val project: Project) {
 
   /** Inject [text] into the target terminal and submit it. Returns false if there's no terminal. */
   fun send(text: String): Boolean {
-    val view = target()?.view ?: return false
+    val tab = target() ?: return false
+    val view = tab.view ?: return false
     view.createSendTextBuilder().shouldExecute().send(text)
+    if (project.service<AvecMoiSettingsService>().focusTerminalOnSend) {
+      revealTerminal(tab)
+    }
     return true
+  }
+
+  /** Show the terminal tool window and select [tab], WITHOUT moving keyboard focus off the editor. */
+  private fun revealTerminal(tab: TerminalToolWindowTab) {
+    val toolWindow = ToolWindowManager.getInstance(project)
+      .getToolWindow(TerminalToolWindowFactory.TOOL_WINDOW_ID) ?: return
+    // autoFocusContents = false keeps the caret in the editor; we just reveal + select the tab.
+    toolWindow.activate({ toolWindow.contentManager.setSelectedContent(tab.content, false) }, false)
   }
 }

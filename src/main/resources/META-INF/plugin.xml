@@ -13,6 +13,10 @@
 
   <extensions defaultExtensionNs="com.intellij">
     <postStartupActivity implementation="net.sjrx.intellij.plugins.avecmoi.AvecMoiStartup"/>
+    <projectConfigurable parentId="tools"
+                         id="net.sjrx.intellij.plugins.avecmoi.settings"
+                         displayName="Avec Moi"
+                         instance="net.sjrx.intellij.plugins.avecmoi.AvecMoiConfigurable"/>
     <toolWindow id="Avec Moi"
                 anchor="right"
                 icon="/META-INF/pluginIcon.svg"
