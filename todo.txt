@@ -59,6 +59,32 @@ Project settings (deferred)
 - [ ] Settings UI (project-level): override / customize the server instructions prompt; toggles that
       just tweak the prompt (engagement level, hint-vs-help, etc.); configurable server port.
 
+Custom quick actions (deferred — not a priority, come back to it)
+- [ ] Let the user define their OWN quick actions (label + message template that gets sent to the
+      agent terminal), beyond the built-in Step Done / Do This Step / Ask for a Hint. This is the
+      fuller version of the "configurable canned vocabulary / multiple buttons" item under Terminal
+      push. Feasibility: medium effort, very doable. Breakdown:
+        - Define + persist (label + message template, placeholders {file}/{line}/{selection}
+          reusing the editor-context code): EASY. One generic action class reading its config +
+          the existing AvecMoiTerminalService.send().
+        - Show in the quick-list popup (Alt+Shift+A): EASY-MED — make avecmoi.QuickListGroup a
+          DYNAMIC ActionGroup (children computed from settings) instead of the static plugin.xml one.
+        - Keymap bindings: MED but idiomatic + the useful part. Register each at runtime with a
+          STABLE id (avecmoi.custom.<uuid>) via ActionManager.registerAction at startup; user binds
+          a shortcut in Settings | Keymap by name. Ship NO default. Binding persists as long as the
+          id is stable; orphaned bindings after delete are harmless.
+        - Show in toolbar: MED — toolbar group must become dynamic + rebuild on change.
+        - Sub-actions / two-step: EASY — nest an ActionGroup ("Custom >" opens a second popup).
+        - Pick an icon: SKIP (fiddly picker, low value) — one default icon.
+        - Bulk of the work is the management UI: a small add/edit/remove table in the settings page.
+      OPEN DECISIONS before building:
+        1. GLOBAL vs per-project definitions. ActionManager is app-level, so global is simplest
+           (your personal quick actions work in any project); per-project means register-all +
+           gate each on e.project. Fork worth settling first.
+        2. Toolbar in the first cut, or just popup + keymap? MVP = label+message, global, stable
+           ids, appears in the Alt+Shift+A popup (optionally under a "Custom >" subgroup) and
+           bindable in Settings | Keymap. Toolbar + icons deferred.
+
 Build / hygiene
 - [ ] stdlib bundling: currently bundling kotlin-stdlib; consider kotlin.stdlib.default.dependency
       =false to use the IDE's stdlib (avoid classloader duplication). Working as-is, low priority.
