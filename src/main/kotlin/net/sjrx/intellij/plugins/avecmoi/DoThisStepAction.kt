@@ -19,7 +19,7 @@ import com.intellij.openapi.project.Project
 class DoThisStepAction : AnAction() {
 
   init {
-    templatePresentation.icon = AllIcons.Actions.Execute
+    templatePresentation.icon = AllIcons.Diff.MagicResolveToolbar
   }
 
   override fun getActionUpdateThread() = ActionUpdateThread.EDT
