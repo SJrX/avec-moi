@@ -26,6 +26,38 @@ class AvecMoiRingServiceEdgeCasesTest : AbstractAvecMoiTest() {
     assertEquals("b", ring.prev()?.note)
   }
 
+  fun testNextSkipsCompletedHandoffs() {
+    // Fixture Setup — the middle handoff is done
+    ring.set(listOf(spec(note = "a"), spec(note = "b"), spec(note = "c")))
+    ring.markDone(1, true)
+
+    // Verification — Next jumps over "b", both forward and across the wrap
+    assertEquals("a", ring.next()?.note)
+    assertEquals("c", ring.next()?.note)
+    assertEquals("a", ring.next()?.note)
+  }
+
+  fun testPrevSkipsCompletedHandoffs() {
+    // Fixture Setup
+    ring.set(listOf(spec(note = "a"), spec(note = "b"), spec(note = "c")))
+    ring.markDone(1, true)
+
+    // Verification
+    assertEquals("c", ring.prev()?.note) // from the start, prev wraps to the last unfinished
+    assertEquals("a", ring.prev()?.note) // skips "b"
+  }
+
+  fun testNavigationStillMovesWhenEveryHandoffIsDone() {
+    // Fixture Setup — nothing left to do
+    ring.set(listOf(spec(note = "a"), spec(note = "b")))
+    ring.markDone(0, true)
+    ring.markDone(1, true)
+
+    // Verification — Next doesn't stick or return null; it falls back to a plain step
+    assertEquals("a", ring.next()?.note)
+    assertEquals("b", ring.next()?.note)
+  }
+
   fun testMarkDoneCanBeToggledBackToNotDone() {
     // Fixture Setup
     ring.set(listOf(spec(note = "a")))

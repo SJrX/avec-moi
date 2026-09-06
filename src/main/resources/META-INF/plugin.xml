@@ -1,6 +1,6 @@
 <idea-plugin>
   <id>net.sjrx.intellij.plugins.avecmoi</id>
-  <name>avec-moi</name>
+  <name>Avec Moi</name>
   <vendor email="vcolo@sjrx.net" url="https://sjrx.net">SJrX</vendor>
 
   <description><![CDATA[
@@ -29,10 +29,24 @@
               description="Tell the agent you finished this step and it can review your implementation">
         <keyboard-shortcut keymap="$default" first-keystroke="control alt shift D"/>
       </action>
+      <action id="avecmoi.PreviousHandoff"
+              class="net.sjrx.intellij.plugins.avecmoi.PreviousHandoffAction"
+              text="Previous Handoff"
+              description="Jump to the previous unfinished handoff in the active session (skips completed ones, wraps around)">
+        <!-- On KDE, Alt+Shift+F7 is free (Find Usages lives on Shift+Alt+7); elsewhere it's Force Step
+             Into, so scope it to KDE and give every other keymap a conflict-free fallback. -->
+        <keyboard-shortcut keymap="Default for KDE" first-keystroke="alt shift F7"/>
+        <keyboard-shortcut keymap="$default" first-keystroke="control alt shift COMMA"/>
+      </action>
       <action id="avecmoi.NextHandoff"
               class="net.sjrx.intellij.plugins.avecmoi.NextHandoffAction"
               text="Next Handoff"
-              description="Jump to the next handoff the agent registered for you to implement"/>
+              description="Jump to the next unfinished handoff in the active session (skips completed ones, wraps around)">
+        <!-- On KDE, Alt+F7 is free (Find Usages lives on Shift+Alt+7); on $default it IS Find Usages,
+             so scope it to KDE and give every other keymap a conflict-free fallback. -->
+        <keyboard-shortcut keymap="Default for KDE" first-keystroke="alt F7"/>
+        <keyboard-shortcut keymap="$default" first-keystroke="control alt shift PERIOD"/>
+      </action>
       <action id="avecmoi.AskForHint"
               class="net.sjrx.intellij.plugins.avecmoi.AskForHintAction"
               text="Ask for a Hint"

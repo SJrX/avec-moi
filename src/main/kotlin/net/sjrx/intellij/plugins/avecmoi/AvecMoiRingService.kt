@@ -224,20 +224,35 @@ class AvecMoiRingService(private val project: Project) :
   @Synchronized fun cursorIndex(): Int = activeLocked()?.cursor ?: -1
 
   @Synchronized
-  fun next(): Handoff? {
-    val s = activeLocked() ?: return null
-    if (s.handoffs.isEmpty()) return null
-    s.cursor = (s.cursor + 1) % s.handoffs.size
-    return s.handoffs[s.cursor]
-  }
+  fun next(): Handoff? = activeLocked()?.let { advance(it, dir = +1) }
 
   @Synchronized
-  fun prev(): Handoff? {
-    val s = activeLocked() ?: return null
-    if (s.handoffs.isEmpty()) return null
-    s.cursor = if (s.cursor <= 0) s.handoffs.size - 1 else s.cursor - 1
-    return s.handoffs[s.cursor]
+  fun prev(): Handoff? = activeLocked()?.let { advance(it, dir = -1) }
+
+  /**
+   * Move the cursor to the next (dir = +1) or previous (dir = -1) NOT-done handoff, wrapping around.
+   * "Next" means the next thing left to do, so completed handoffs are skipped. If every handoff is
+   * done, fall back to a plain one-step move so navigation still works. Returns the landed handoff.
+   */
+  private fun advance(s: Session, dir: Int): Handoff? {
+    val n = s.handoffs.size
+    if (n == 0) return null
+    // First index to consider, honoring the -1 "nothing selected yet" sentinel (next→0, prev→last).
+    val start = if (s.cursor in 0 until n) floorMod(s.cursor + dir, n) else if (dir > 0) 0 else n - 1
+    var idx = start
+    repeat(n) {
+      if (!s.handoffs[idx].done) {
+        s.cursor = idx
+        return s.handoffs[idx]
+      }
+      idx = floorMod(idx + dir, n)
+    }
+    // Everything is done: move one step anyway so the buttons still navigate.
+    s.cursor = start
+    return s.handoffs[start]
   }
+
+  private fun floorMod(a: Int, m: Int): Int = ((a % m) + m) % m
 
   // --- helpers ----------------------------------------------------------------------------------
 

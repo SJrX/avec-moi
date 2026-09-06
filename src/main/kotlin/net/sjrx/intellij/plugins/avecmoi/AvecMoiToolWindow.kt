@@ -70,7 +70,7 @@ class AvecMoiToolWindowFactory : ToolWindowFactory, DumbAware {
   }
 }
 
-private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolWindowPanel(true, true) {
+internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolWindowPanel(true, true) {
 
   /** Header row marking one of the three session groups. */
   private class Group(val label: String, val icon: Icon)
@@ -185,7 +185,7 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
     return activeGroup.getChildAt(0) as? DefaultMutableTreeNode
   }
 
-  private fun selectActiveHandoff(index: Int) {
+  internal fun selectActiveHandoff(index: Int) {
     val sn = activeSessionNode() ?: return
     if (index < 0 || index >= sn.childCount) return
     val node = sn.getChildAt(index) as DefaultMutableTreeNode
@@ -220,8 +220,8 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
       am.getAction("avecmoi.DoThisStep")?.let { add(it) }
       am.getAction("avecmoi.AskForHint")?.let { add(it) }
       addSeparator()
-      add(NavAction("Previous Handoff", AllIcons.Vcs.Arrow_left, forward = false))
-      add(NavAction("Next Handoff", AllIcons.Vcs.Arrow_right, forward = true))
+      am.getAction("avecmoi.PreviousHandoff")?.let { add(it) }
+      am.getAction("avecmoi.NextHandoff")?.let { add(it) }
       addSeparator()
       add(common.createExpandAllAction(expander, tree))
       add(common.createCollapseAllAction(expander, tree))
@@ -343,19 +343,6 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
     }
   }
 
-  private inner class NavAction(text: String, icon: Icon, private val forward: Boolean) :
-    AnAction(text, null, icon), DumbAware {
-    override fun getActionUpdateThread() = ActionUpdateThread.EDT
-    override fun update(e: AnActionEvent) {
-      e.presentation.isEnabled = !project.service<AvecMoiRingService>().isEmpty()
-    }
-    override fun actionPerformed(e: AnActionEvent) {
-      val ring = project.service<AvecMoiRingService>()
-      val handoff = (if (forward) ring.next() else ring.prev()) ?: return
-      navigate(handoff)
-      selectActiveHandoff(ring.cursorIndex())
-    }
-  }
 
   /**
    * Agent-connection indicator: green = an agent has talked to THIS project this session, yellow =
