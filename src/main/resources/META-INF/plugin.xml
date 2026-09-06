@@ -36,11 +36,15 @@
       <action id="avecmoi.AskForHint"
               class="net.sjrx.intellij.plugins.avecmoi.AskForHintAction"
               text="Ask for a Hint"
-              description="Ask the agent for a hint at the cursor or selection (saves the file, sends a reference)"/>
+              description="Ask the agent for a hint at the cursor or selection (saves the file, sends a reference)">
+        <keyboard-shortcut keymap="$default" first-keystroke="control alt shift H"/>
+      </action>
       <action id="avecmoi.DoThisStep"
               class="net.sjrx.intellij.plugins.avecmoi.DoThisStepAction"
               text="Do This Step"
-              description="Hand the current step back to the agent to implement (uses your selection, else the current handoff)"/>
+              description="Hand the current step back to the agent to implement (uses your selection, else the current handoff)">
+        <keyboard-shortcut keymap="$default" first-keystroke="control alt shift I"/>
+      </action>
     </group>
   </actions>
 </idea-plugin>
