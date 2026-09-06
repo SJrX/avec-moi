@@ -23,6 +23,14 @@
     <!-- Grouped under a single Tools submenu (name TBD — see project decision). -->
     <group id="avecmoi.MenuGroup" text="Avec Moi" popup="true">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
+      <action id="avecmoi.QuickList"
+              class="net.sjrx.intellij.plugins.avecmoi.AvecMoiQuickListAction"
+              text="Avec Moi Actions…"
+              description="Pop up the Avec Moi quick menu (handoff navigation and the agent-signal actions)">
+        <!-- $default alt+shift+A shadows only VcsHistory.ShowAllAffected (VCS-history view); harmless. -->
+        <keyboard-shortcut keymap="$default" first-keystroke="alt shift A"/>
+      </action>
+      <separator/>
       <action id="avecmoi.StepDone"
               class="net.sjrx.intellij.plugins.avecmoi.StepDoneAction"
               text="Step Done"
@@ -59,6 +67,17 @@
               description="Hand the current step back to the agent to implement (uses your selection, else the current handoff)">
         <keyboard-shortcut keymap="$default" first-keystroke="control alt shift I"/>
       </action>
+    </group>
+
+    <!-- Contents of the Alt+Shift+A quick-menu popup (avecmoi.QuickList). Not added to any menu;
+         referenced only by AvecMoiQuickListAction. Order: navigation, then the agent-signal actions. -->
+    <group id="avecmoi.QuickListGroup">
+      <reference ref="avecmoi.NextHandoff"/>
+      <reference ref="avecmoi.PreviousHandoff"/>
+      <separator/>
+      <reference ref="avecmoi.StepDone"/>
+      <reference ref="avecmoi.DoThisStep"/>
+      <reference ref="avecmoi.AskForHint"/>
     </group>
   </actions>
 </idea-plugin>
