@@ -1,5 +1,6 @@
 package net.sjrx.intellij.plugins.avecmoi
 
+import com.intellij.openapi.editor.DefaultLanguageHighlighterColors
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.fileTypes.PlainSyntaxHighlighter
 import com.intellij.openapi.fileTypes.SyntaxHighlighter
@@ -17,14 +18,26 @@ class AvecMoiColorSettingsPage : ColorSettingsPage {
   override fun getHighlighter(): SyntaxHighlighter = PlainSyntaxHighlighter()
 
   // The preview can't render a real inlay, so style a tagged phrase with the same attribute — it
-  // shows the exact bg/fg the note inlay uses, which is what you're editing here.
+  // shows the exact bg/fg the note inlay uses. The rest is faked syntax coloring for flavor.
   override fun getDemoText(): String =
-    "Handoff notes float above their line in the editor as inlays, e.g.\n\n" +
-      "<note>implement the partition step here — pivot on the last element,\n" +
-      "then recurse on the two halves</note>"
+    """
+    <comment>// avec-moi scaffolded this. The load-bearing part is all yours.</comment>
+    <keyword>fun</keyword> <fn>getRandomNumber</fn>(): <keyword>Int</keyword> {
+        <note>TODO(human): make this actually random.
+        I did the imports and the return type — I left you the interesting part.
+        (Yes, the interesting part is the entire function.)</note>
+        <keyword>return</keyword> <num>4</num>  <comment>// chosen by fair dice roll. guaranteed to be random.</comment>
+    }
+    """.trimIndent()
 
   override fun getAdditionalHighlightingTagToDescriptorMap(): Map<String, TextAttributesKey> =
-    mapOf("note" to AvecMoiColors.NOTE_INLAY)
+    mapOf(
+      "note" to AvecMoiColors.NOTE_INLAY,
+      "keyword" to DefaultLanguageHighlighterColors.KEYWORD,
+      "fn" to DefaultLanguageHighlighterColors.FUNCTION_DECLARATION,
+      "num" to DefaultLanguageHighlighterColors.NUMBER,
+      "comment" to DefaultLanguageHighlighterColors.LINE_COMMENT,
+    )
 
   companion object {
     private val DESCRIPTORS = arrayOf(AttributesDescriptor("Handoff note inlay", AvecMoiColors.NOTE_INLAY))
