@@ -217,6 +217,7 @@ private class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolW
       add(TerminalSelectorAction())
       addSeparator()
       am.getAction("avecmoi.StepDone")?.let { add(it) }
+      am.getAction("avecmoi.DoThisStep")?.let { add(it) }
       am.getAction("avecmoi.AskForHint")?.let { add(it) }
       addSeparator()
       add(NavAction("Previous Handoff", AllIcons.Vcs.Arrow_left, forward = false))

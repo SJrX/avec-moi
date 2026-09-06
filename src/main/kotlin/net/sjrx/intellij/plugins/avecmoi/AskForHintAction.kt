@@ -4,6 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -20,10 +21,12 @@ class AskForHintAction : AnAction() {
     templatePresentation.icon = AllIcons.Actions.IntentionBulb
   }
 
-  override fun getActionUpdateThread() = ActionUpdateThread.BGT
+  override fun getActionUpdateThread() = ActionUpdateThread.EDT
 
   override fun update(e: AnActionEvent) {
-    e.presentation.isEnabled = e.project != null
+    val project = e.project
+    // Enabled only when there's a terminal to send to (no session required).
+    e.presentation.isEnabled = project != null && project.service<AvecMoiTerminalService>().tabs().isNotEmpty()
   }
 
   override fun actionPerformed(e: AnActionEvent) {

@@ -25,8 +25,8 @@
       <add-to-group group-id="ToolsMenu" anchor="last"/>
       <action id="avecmoi.StepDone"
               class="net.sjrx.intellij.plugins.avecmoi.StepDoneAction"
-              text="Step Done → Agent"
-              description="Inject 'Step done' into the running agent terminal session and submit it">
+              text="Step Done"
+              description="Tell the agent you finished this step and it can review your implementation">
         <keyboard-shortcut keymap="$default" first-keystroke="control alt shift D"/>
       </action>
       <action id="avecmoi.NextHandoff"
@@ -37,6 +37,10 @@
               class="net.sjrx.intellij.plugins.avecmoi.AskForHintAction"
               text="Ask for a Hint"
               description="Ask the agent for a hint at the cursor or selection (saves the file, sends a reference)"/>
+      <action id="avecmoi.DoThisStep"
+              class="net.sjrx.intellij.plugins.avecmoi.DoThisStepAction"
+              text="Do This Step"
+              description="Hand the current step back to the agent to implement (uses your selection, else the current handoff)"/>
     </group>
   </actions>
 </idea-plugin>
