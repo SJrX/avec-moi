@@ -1,11 +1,9 @@
 package net.sjrx.intellij.plugins.avecmoi
 
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
-import com.intellij.openapi.editor.DefaultLanguageHighlighterColors
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorCustomElementRenderer
 import com.intellij.openapi.editor.EditorFactory
@@ -17,13 +15,16 @@ import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.JBColor
+import com.intellij.util.IconUtil
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.Rectangle
 import java.awt.RenderingHints
+import javax.swing.Icon
 
 /**
  * Floats handoff notes above their line in open editors as block inlays — visual only, so the
@@ -101,7 +102,7 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
    * boxes for a text marker.
    */
   private class NoteInlayRenderer(val handoff: AvecMoiRingService.Handoff) : EditorCustomElementRenderer {
-    private val icon = AllIcons.General.Balloon
+    private val icon = ICON
     private val pad = JBUI.scale(5)
     private val gap = JBUI.scale(4)
 
@@ -120,22 +121,29 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val editor = inlay.editor
       val g2 = g as Graphics2D
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-      val hint = editor.colorsScheme.getAttributes(DefaultLanguageHighlighterColors.INLINE_PARAMETER_HINT)
+      val attrs = editor.colorsScheme.getAttributes(AvecMoiColors.NOTE_INLAY)
       val lines = lines()
       val lineHeight = editor.lineHeight
 
-      hint?.backgroundColor?.let { bg ->
+      attrs?.backgroundColor?.let { bg ->
         g2.color = bg
         g2.fillRoundRect(targetRegion.x, targetRegion.y, calcWidthInPixels(inlay), targetRegion.height, JBUI.scale(8), JBUI.scale(8))
       }
       icon.paintIcon(editor.contentComponent, g2, targetRegion.x + pad, targetRegion.y + (lineHeight - icon.iconHeight) / 2)
 
       g2.font = font(editor)
-      g2.color = if (handoff.done) UIUtil.getInactiveTextColor() else (hint?.foregroundColor ?: JBColor.GRAY)
+      g2.color = if (handoff.done) UIUtil.getInactiveTextColor() else (attrs?.foregroundColor ?: JBColor.GRAY)
       val ascent = g2.fontMetrics.ascent
       val textX = targetRegion.x + pad + icon.iconWidth + gap
       lines.forEachIndexed { i, line ->
         g2.drawString(line, textX, targetRegion.y + i * lineHeight + ascent)
+      }
+    }
+
+    companion object {
+      // The avec-moi plugin icon (40x40) scaled down to a marker size for the inlay.
+      private val ICON: Icon = IconLoader.getIcon("/META-INF/pluginIcon.svg", NoteInlayRenderer::class.java).let {
+        IconUtil.scale(it, null, JBUI.scale(15).toFloat() / it.iconWidth)
       }
     }
   }

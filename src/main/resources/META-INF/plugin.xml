@@ -13,6 +13,7 @@
 
   <extensions defaultExtensionNs="com.intellij">
     <postStartupActivity implementation="net.sjrx.intellij.plugins.avecmoi.AvecMoiStartup"/>
+    <colorSettingsPage implementation="net.sjrx.intellij.plugins.avecmoi.AvecMoiColorSettingsPage"/>
     <projectConfigurable parentId="tools"
                          id="net.sjrx.intellij.plugins.avecmoi.settings"
                          displayName="Avec Moi"
