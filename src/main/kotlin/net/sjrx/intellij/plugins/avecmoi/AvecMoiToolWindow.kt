@@ -103,9 +103,13 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     })
   }
 
+  private var shownHandoff: AvecMoiRingService.Handoff? = null
+  private var shownHandoffNode: DefaultMutableTreeNode? = null
+  private var loadingNote = false // true while we set the pane text programmatically (suppress save)
+
   /**
-   * Read-only, word-wrapped view of the selected handoff's note. The tree rows can't wrap reliably
-   * (IntelliJ's tree UI doesn't honor variable row height), so the full note lives here instead.
+   * Editable, word-wrapped view of the selected handoff's note (the tree rows can't wrap reliably).
+   * Edits save to the handoff live per keystroke — no save button — and refresh its tree note row.
    */
   private val noteDetail = JBTextArea().apply {
     isEditable = false
@@ -113,6 +117,11 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     wrapStyleWord = true
     border = JBUI.Borders.empty(6, 8)
     text = "Select a handoff to see its note."
+    document.addDocumentListener(object : javax.swing.event.DocumentListener {
+      override fun insertUpdate(e: javax.swing.event.DocumentEvent) = saveNote()
+      override fun removeUpdate(e: javax.swing.event.DocumentEvent) = saveNote()
+      override fun changedUpdate(e: javax.swing.event.DocumentEvent) = saveNote()
+    })
   }
 
   init {
@@ -227,12 +236,42 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
 
   /** Fill the note pane from the current selection (a handoff row, or a note child of one). */
   private fun updateNoteDetail() {
+    if (noteDetail.isFocusOwner) return // a background reload must not clobber an in-progress edit
     val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
-    val handoff = node?.userObject as? AvecMoiRingService.Handoff
-      ?: ((node?.userObject as? Note)?.let { node.parent as? DefaultMutableTreeNode })
-        ?.userObject as? AvecMoiRingService.Handoff
-    noteDetail.text = handoff?.note?.ifBlank { "(no note)" } ?: "Select a handoff to see its note."
-    noteDetail.caretPosition = 0
+    val handoffNode = when (node?.userObject) {
+      is AvecMoiRingService.Handoff -> node
+      is Note -> node.parent as? DefaultMutableTreeNode
+      else -> null
+    }
+    val handoff = handoffNode?.userObject as? AvecMoiRingService.Handoff
+    shownHandoff = handoff
+    shownHandoffNode = handoffNode
+    loadingNote = true
+    try {
+      noteDetail.isEditable = handoff != null
+      noteDetail.text = handoff?.note ?: "Select a handoff to see its note."
+      noteDetail.caretPosition = 0
+    } finally {
+      loadingNote = false
+    }
+  }
+
+  /** Persist a live in-pane edit back to the shown handoff and refresh its tree note row (no reload). */
+  private fun saveNote() {
+    if (loadingNote) return
+    val handoff = shownHandoff ?: return
+    if (!noteDetail.isEditable) return
+    val text = noteDetail.text
+    if (text == handoff.note) return
+    handoff.note = text
+    val noteChild = shownHandoffNode?.let { hn ->
+      (0 until hn.childCount).map { hn.getChildAt(it) as DefaultMutableTreeNode }
+        .firstOrNull { it.userObject is Note }
+    }
+    if (noteChild != null) {
+      noteChild.userObject = Note(text)
+      treeModel.nodeChanged(noteChild)
+    }
   }
 
   /** Navigate to a handoff, reading its (marker-tracked) line under a read action. */
