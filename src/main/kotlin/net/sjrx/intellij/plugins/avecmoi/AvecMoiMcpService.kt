@@ -216,7 +216,9 @@ class AvecMoiMcpService : Disposable {
               }
               putJsonObject("note") {
                 put("type", "string")
-                put("description", "What the human should implement here.")
+                put("description", "What the human should implement here. Use real newlines and " +
+                  "hard-wrap at ~80 columns — it's shown as a multi-line inlay above the code and long " +
+                  "lines aren't wrapped for you.")
               }
             }
             putJsonArray("required") { add("file"); add("note") }
@@ -240,7 +242,11 @@ class AvecMoiMcpService : Disposable {
               put("type", "string"); put("description", "File path (absolute, or relative to the project root).")
             }
             putJsonObject("line") { put("type", "integer"); put("description", "1-based line of the stub.") }
-            putJsonObject("note") { put("type", "string"); put("description", "What the human should implement here.") }
+            putJsonObject("note") {
+              put("type", "string")
+              put("description", "What the human should implement here. Use real newlines, hard-wrap " +
+                "~80 columns (shown as a multi-line editor inlay; long lines aren't wrapped for you).")
+            }
             putJsonObject("position") {
               put("type", "integer"); put("description", "1-based position to insert at; default appends to the end.")
             }
@@ -266,7 +272,11 @@ class AvecMoiMcpService : Disposable {
             putJsonObject("handoff") {
               put("type", "integer"); put("description", "1-based handoff number (as shown by list_handoffs).")
             }
-            putJsonObject("note") { put("type", "string"); put("description", "New note (what to implement here).") }
+            putJsonObject("note") {
+              put("type", "string")
+              put("description", "New note. Use real newlines, hard-wrap ~80 columns (multi-line inlay; " +
+                "long lines aren't wrapped for you).")
+            }
             putJsonObject("file") {
               put("type", "string"); put("description", "New file path (absolute, or relative to the project root).")
             }
@@ -787,7 +797,10 @@ class AvecMoiMcpService : Disposable {
         think about it. For a distinct piece of work (or a second agent on this project), call
         `create_session("<name>")` to start a fresh one; `list_sessions` / `switch_session` /
         `rename_session` manage them; `complete_session` moves a finished one to Historical.
-      - Every handoff needs a specific note: what to implement here and why it matters.
+      - Every handoff needs a specific note: what to implement here and why it matters. Format notes
+        as several short lines — put in real newlines and hard-wrap at a reasonable editor width
+        (about 80 columns). The IDE floats the note above the code as a multi-line inlay and does NOT
+        wrap long lines for you, so a single long line will run off-screen.
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
       - The human steps through the handoffs and implements them.
 
