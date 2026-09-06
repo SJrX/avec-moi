@@ -200,4 +200,39 @@ class AvecMoiRingServiceEdgeCasesTest : AbstractAvecMoiTest() {
     assertEquals(first, ring.activeId())
     assertEquals(listOf(first), ring.listSessions().map { it.id })
   }
+
+  fun testUpdateEditsTheNoteInPlaceKeepingDoneAndPosition() {
+    // Fixture Setup
+    ring.set(listOf(spec(note = "a"), spec(note = "b")))
+    ring.markDone(0, true)
+
+    // Exercise SUT — reword the first
+    assertTrue(ring.update(0, note = "a-edited", file = null, line = null))
+
+    // Verification
+    assertEquals("a-edited", ring.all()[0].note)
+    assertTrue("done-state preserved", ring.all()[0].done)
+    assertEquals("position preserved", "b", ring.all()[1].note)
+  }
+
+  fun testUpdateCanRepointFileAndLineKeepingDoneAndNote() {
+    // Fixture Setup
+    ring.set(listOf(spec(file = "A.kt", line = 1, note = "x")))
+    ring.markDone(0, true)
+
+    // Exercise SUT — the stub moved
+    assertTrue(ring.update(0, note = null, file = "B.kt", line = 9))
+
+    // Verification
+    val h = ring.all().single()
+    assertEquals("B.kt", h.file)
+    assertEquals(9, h.line)
+    assertEquals("x", h.note)      // note untouched
+    assertTrue(h.done)             // done untouched
+  }
+
+  fun testUpdateOutOfRangeReturnsFalse() {
+    ring.set(listOf(spec(note = "only")))
+    assertFalse(ring.update(5, note = "x", file = null, line = null))
+  }
 }

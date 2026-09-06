@@ -166,6 +166,42 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
       .contains("[done]"))
   }
 
+  fun testUpdateHandoffEditsInPlacePreservingDoneAndPosition() {
+    // Fixture Setup
+    register("""{ "file": "A.kt", "note": "first" }""", """{ "file": "B.kt", "note": "second" }""")
+    callTool("mark_handoff_done", """{ "projectPath": "$projectPath", "handoff": 1 }""")
+
+    // Exercise SUT — reword #1
+    // language=JSON
+    val result = callTool("update_handoff", """{ "projectPath": "$projectPath", "handoff": 1, "note": "reworded" }""")
+
+    // Verification
+    assertFalse(result.isError())
+    assertEquals("reworded", ring.all()[0].note)
+    assertTrue("done preserved", ring.all()[0].done)
+    assertEquals("position preserved", "second", ring.all()[1].note)
+  }
+
+  fun testUpdateHandoffWithNoFieldsIsAToolError() {
+    register("""{ "file": "A.kt", "note": "x" }""")
+    val result = callTool("update_handoff", """{ "projectPath": "$projectPath", "handoff": 1 }""")
+    assertTrue(result.isError())
+  }
+
+  fun testMarkHandoffDoneCanUnmarkWithDoneFalse() {
+    // Fixture Setup
+    register("""{ "file": "A.kt", "note": "x" }""")
+    callTool("mark_handoff_done", """{ "projectPath": "$projectPath", "handoff": 1 }""")
+    assertTrue(ring.all()[0].done)
+
+    // Exercise SUT — un-mark
+    // language=JSON
+    callTool("mark_handoff_done", """{ "projectPath": "$projectPath", "handoff": 1, "done": false }""")
+
+    // Verification
+    assertFalse(ring.all()[0].done)
+  }
+
   fun testMarkHandoffDoneOutOfRangeIsAToolError() {
     // Fixture Setup
     register("""{ "file": "A.kt", "note": "only" }""")

@@ -37,7 +37,7 @@ class AvecMoiRingService(private val project: Project) :
 
   class Handoff(
     val file: String,
-    val note: String,
+    var note: String,
     var marker: RangeMarker?,
     private val fallbackLine: Int,
   ) {
@@ -178,6 +178,30 @@ class AvecMoiRingService(private val project: Project) :
     }
     changed()
     return index + 1
+  }
+
+  /**
+   * Edit an existing handoff in place, preserving its position and done-state. Only non-null fields
+   * change. If [file] or [line] changes, the RangeMarker is re-anchored; a note-only edit keeps it.
+   */
+  fun update(index: Int, note: String?, file: String?, line: Int?): Boolean {
+    val ok = synchronized(this) {
+      val s = activeLocked() ?: return@synchronized false
+      val old = s.handoffs.getOrNull(index) ?: return@synchronized false
+      val fileChanged = file != null && file != old.file
+      val lineChanged = line != null && line != old.line
+      if (fileChanged || lineChanged) {
+        old.marker?.dispose()
+        val rebuilt = buildHandoffs(listOf(HandoffSpec(file ?: old.file, line ?: old.line, note ?: old.note))).first()
+        rebuilt.done = old.done
+        s.handoffs[index] = rebuilt
+      } else if (note != null) {
+        old.note = note
+      }
+      true
+    }
+    if (ok) changed()
+    return ok
   }
 
   fun markDone(index: Int, done: Boolean): Boolean {

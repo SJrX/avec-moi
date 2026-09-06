@@ -17,6 +17,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -247,6 +248,33 @@ class AvecMoiMcpService : Disposable {
           putJsonArray("required") { add("projectPath"); add("file"); add("note") }
         }
       }
+      addJsonObject {
+        put("name", "update_handoff")
+        put(
+          "description",
+          "Edit an existing handoff in place (by its 1-based number from list_handoffs), keeping its " +
+            "position and done-state. Pass only the fields to change — note to reword, and/or file/line " +
+            "to re-point it (e.g. the stub moved). Prefer this over remove+add, which renumbers and " +
+            "drops done-state.",
+        )
+        putJsonObject("inputSchema") {
+          put("type", "object")
+          putJsonObject("properties") {
+            putJsonObject("projectPath") {
+              put("type", "string"); put("description", "Absolute path inside the target project (e.g. your cwd).")
+            }
+            putJsonObject("handoff") {
+              put("type", "integer"); put("description", "1-based handoff number (as shown by list_handoffs).")
+            }
+            putJsonObject("note") { put("type", "string"); put("description", "New note (what to implement here).") }
+            putJsonObject("file") {
+              put("type", "string"); put("description", "New file path (absolute, or relative to the project root).")
+            }
+            putJsonObject("line") { put("type", "integer"); put("description", "New 1-based line.") }
+          }
+          putJsonArray("required") { add("projectPath"); add("handoff") }
+        }
+      }
       tool(
         "navigate_to",
         "Open a file in the IDE editor and move the caret to a line — e.g. to start the human at " +
@@ -275,16 +303,30 @@ class AvecMoiMcpService : Disposable {
         "Clear all registered handoffs for a project (e.g. the plan is finished).",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
-      tool(
-        "mark_handoff_done",
-        "Mark a handoff complete (by its 1-based number from list_handoffs) — e.g. after the human " +
-          "implemented it and you reviewed their work. It stays in the list, shown as done.",
-        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
-        "handoff" to buildJsonObject {
-          put("type", "integer")
-          put("description", "1-based handoff number (as shown by list_handoffs).")
-        },
-      )
+      addJsonObject {
+        put("name", "mark_handoff_done")
+        put(
+          "description",
+          "Mark a handoff complete (by its 1-based number from list_handoffs) — e.g. after the human " +
+            "implemented it and you reviewed their work. It stays in the list, shown as done. Pass " +
+            "done=false to un-mark one.",
+        )
+        putJsonObject("inputSchema") {
+          put("type", "object")
+          putJsonObject("properties") {
+            putJsonObject("projectPath") {
+              put("type", "string"); put("description", "Absolute path inside the target project (e.g. your cwd).")
+            }
+            putJsonObject("handoff") {
+              put("type", "integer"); put("description", "1-based handoff number (as shown by list_handoffs).")
+            }
+            putJsonObject("done") {
+              put("type", "boolean"); put("description", "true to mark done (default), false to un-mark.")
+            }
+          }
+          putJsonArray("required") { add("projectPath"); add("handoff") }
+        }
+      }
       tool(
         "remove_handoff",
         "Remove a handoff entirely (by its 1-based number from list_handoffs) — e.g. it no longer " +
@@ -345,6 +387,7 @@ class AvecMoiMcpService : Disposable {
       "get_avecmoi_guidance" -> getGuidance(args)
       "register_handoffs" -> registerHandoffs(args)
       "add_handoff" -> addHandoff(args)
+      "update_handoff" -> updateHandoff(args)
       "navigate_to" -> navigateTo(args)
       "get_editor_context" -> getEditorContext(args)
       "list_handoffs" -> listHandoffs(args)
@@ -425,6 +468,25 @@ class AvecMoiMcpService : Disposable {
     return textContent("Added handoff #$n in '${project.name}'.", isError = false)
   }
 
+  private fun updateHandoff(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val n = args?.get("handoff")?.jsonPrimitive?.intOrNull
+      ?: return textContent("Missing 'handoff' number.", isError = true)
+    val note = args["note"]?.jsonPrimitive?.contentOrNull
+    val file = args["file"]?.jsonPrimitive?.contentOrNull
+    val line = args["line"]?.jsonPrimitive?.intOrNull
+    if (note == null && file == null && line == null) {
+      return textContent("Nothing to update — pass at least one of note, file, line.", isError = true)
+    }
+    return if (project.service<AvecMoiRingService>().update(n - 1, note, file, line)) {
+      textContent("Updated handoff #$n in '${project.name}'.", isError = false)
+    } else {
+      textContent("No handoff #$n in '${project.name}'.", isError = true)
+    }
+  }
+
   private fun navigateTo(args: JsonObject?): JsonObject {
     val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
     val project = resolveProject(path)
@@ -496,8 +558,10 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val n = args?.get("handoff")?.jsonPrimitive?.intOrNull
       ?: return textContent("Missing 'handoff' number.", isError = true)
-    return if (project.service<AvecMoiRingService>().markDone(n - 1, true)) {
-      textContent("Marked handoff #$n done in '${project.name}'.", isError = false)
+    val done = args["done"]?.jsonPrimitive?.booleanOrNull ?: true
+    return if (project.service<AvecMoiRingService>().markDone(n - 1, done)) {
+      val what = if (done) "done" else "not done"
+      textContent("Marked handoff #$n $what in '${project.name}'.", isError = false)
     } else {
       textContent("No handoff #$n in '${project.name}'.", isError = true)
     }
@@ -682,7 +746,7 @@ class AvecMoiMcpService : Disposable {
      */
     val TOOL_NAMES = listOf(
       "ping", "list_projects", "resolve_project", "get_avecmoi_guidance", "register_handoffs",
-      "add_handoff", "navigate_to",
+      "add_handoff", "update_handoff", "navigate_to",
       "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
       "create_session", "list_sessions", "switch_session", "rename_session", "complete_session",
     )

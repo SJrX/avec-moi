@@ -28,6 +28,7 @@ class AvecMoiRingNotificationTest : AbstractAvecMoiTest() {
     assertEquals("set", 1, notificationsFrom { ring.set(listOf(spec(note = "a"))) })
     assertEquals("add", 1, notificationsFrom { ring.add(spec(note = "b"), null) })
     assertEquals("markDone", 1, notificationsFrom { ring.markDone(0, true) })
+    assertEquals("update", 1, notificationsFrom { ring.update(0, note = "b2", file = null, line = null) })
     assertEquals("remove", 1, notificationsFrom { ring.remove(0) })
     assertEquals("clear", 1, notificationsFrom { ring.clear() })
   }
@@ -48,6 +49,7 @@ class AvecMoiRingNotificationTest : AbstractAvecMoiTest() {
 
     // Verification — operations that change nothing must stay silent (no needless UI churn)
     assertEquals("out-of-range markDone", 0, notificationsFrom { ring.markDone(9, true) })
+    assertEquals("out-of-range update", 0, notificationsFrom { ring.update(9, "x", null, null) })
     assertEquals("out-of-range remove", 0, notificationsFrom { ring.remove(9) })
     assertEquals("switch to unknown session", 0, notificationsFrom { ring.switchSession("nope") })
     assertEquals("rename unknown session", 0, notificationsFrom { ring.renameSession("nope", "x") })
