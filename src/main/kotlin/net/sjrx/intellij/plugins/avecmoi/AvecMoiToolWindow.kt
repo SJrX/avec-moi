@@ -19,6 +19,7 @@ import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.project.DumbAware
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.SimpleToolWindowPanel
@@ -225,6 +226,8 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
       addSeparator()
       add(common.createExpandAllAction(expander, tree))
       add(common.createCollapseAllAction(expander, tree))
+      addSeparator()
+      add(OpenSettingsAction())
     }
     val mainToolbar = am.createActionToolbar("AvecMoiRing", mainGroup, true).also { it.targetComponent = tree }
     // Right-aligned status indicator in its own toolbar.
@@ -382,6 +385,14 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
   }
 
   /** Dropdown to pin which terminal tab Avec Moi injects into (defaults to the selected one). */
+  private inner class OpenSettingsAction :
+    AnAction("Avec Moi Settings", "Open Avec Moi settings", AllIcons.General.Settings), DumbAware {
+    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    override fun actionPerformed(e: AnActionEvent) {
+      ShowSettingsUtil.getInstance().showSettingsDialog(project, AvecMoiConfigurable::class.java)
+    }
+  }
+
   private inner class TerminalSelectorAction : ComboBoxAction() {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
     override fun update(e: AnActionEvent) {
