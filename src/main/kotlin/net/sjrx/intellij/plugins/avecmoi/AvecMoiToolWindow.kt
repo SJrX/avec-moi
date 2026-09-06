@@ -448,7 +448,8 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
         AvecMoiConnectionState.ELSEWHERE -> "An agent is connected, but hasn't targeted THIS project yet.\n\n" +
           "Make sure it calls tools with this project's path (its cwd):\n  ${project.basePath}"
         AvecMoiConnectionState.NONE -> "No agent has contacted Avec Moi this session.\n\n" +
-          "To connect, run:\n  claude mcp add --scope user --transport http avec-moi http://localhost:8282/mcp\n" +
+          "To connect, run:\n  claude mcp add --scope user --transport http avec-moi " +
+          "http://localhost:${service<AvecMoiMcpService>().currentPort()}/mcp\n" +
           "then start (or restart) your agent session."
       }
       Messages.showInfoMessage(project, msg, "Avec Moi — Agent Connection")

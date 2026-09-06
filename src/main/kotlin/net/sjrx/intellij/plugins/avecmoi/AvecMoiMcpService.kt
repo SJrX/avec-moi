@@ -67,17 +67,33 @@ class AvecMoiMcpService : Disposable {
     }
   }
 
+  /** The port the server is actually bound to right now (for the connect instructions). */
+  @Volatile
+  private var activePort: Int = PORT
+
+  fun currentPort(): Int = activePort
+
   @Synchronized
   fun startIfNeeded() {
     if (server != null) return
+    val port = service<AvecMoiMcpSettings>().port
     try {
-      val s = configureServer(PORT)
+      val s = configureServer(port)
       s.start()
       server = s
-      thisLogger().info("avec-moi MCP server listening on http://127.0.0.1:$PORT/mcp")
+      activePort = port
+      thisLogger().info("avec-moi MCP server listening on http://127.0.0.1:$port/mcp")
     } catch (t: Throwable) {
-      thisLogger().warn("avec-moi: failed to start MCP server on port $PORT", t)
+      thisLogger().warn("avec-moi: failed to start MCP server on port $port", t)
     }
+  }
+
+  /** Stop and rebind on the currently-configured port (call after the port setting changes). */
+  @Synchronized
+  fun restart() {
+    server?.stop(0)
+    server = null
+    startIfNeeded()
   }
 
   /** Build the server with its `/mcp` and catch-all contexts, bound to [port] (0 = an ephemeral port). */

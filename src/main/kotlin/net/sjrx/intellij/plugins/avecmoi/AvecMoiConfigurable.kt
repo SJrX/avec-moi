@@ -12,6 +12,7 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.LabelPosition
 import com.intellij.ui.dsl.builder.bind
+import com.intellij.ui.dsl.builder.bindIntText
 import com.intellij.ui.dsl.builder.bindText
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.table.TableView
@@ -32,6 +33,7 @@ import javax.swing.table.TableCellEditor
 class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Avec Moi") {
 
   private val settings = project.service<AvecMoiSettingsService>()
+  private val mcpSettings = service<AvecMoiMcpSettings>()
 
   // The familiarity table isn't DSL-bindable, so it's synced manually in onReset/onApply/onIsModified.
   private val familiarityModel = ListTableModel<FamiliarityEntry>(SubjectColumn(), LevelColumn())
@@ -50,6 +52,15 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       buttonsGroup("Show handoff notes above their line in the editor:") {
         EditorNoteScope.entries.forEach { scope -> row { radioButton(scope.label, scope) } }
       }.bind(settings::editorNoteScope)
+    }
+
+    group("MCP Server") {
+      row("Port (IDE-wide):") {
+        intTextField(1024..65535).bindIntText(mcpSettings::port)
+      }.rowComment(
+        "One avec-moi MCP server serves all projects in this IDE. Changing the port restarts it — " +
+          "re-run 'claude mcp add … http://localhost:<port>/mcp' with the new port afterward.",
+      )
     }
 
     group("Agent Guidance") {
@@ -94,6 +105,9 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       settings.familiarity = familiarityModel.items.map { it.copy() }.toMutableList()
       // Reflect an editorNoteScope change (and any note edits) in the editor inlays immediately.
       project.service<AvecMoiInlayService>().refreshAll()
+      // Rebind the server only if the port actually changed.
+      val mcp = service<AvecMoiMcpService>()
+      if (mcp.currentPort() != mcpSettings.port) mcp.restart()
     }
   }
 
