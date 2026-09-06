@@ -122,12 +122,6 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
       override fun removeUpdate(e: javax.swing.event.DocumentEvent) = saveNote()
       override fun changedUpdate(e: javax.swing.event.DocumentEvent) = saveNote()
     })
-    // When editing settles (focus leaves), refresh the editor inlays so the floated note matches.
-    addFocusListener(object : java.awt.event.FocusAdapter() {
-      override fun focusLost(e: java.awt.event.FocusEvent) {
-        project.service<AvecMoiInlayService>().refreshAll()
-      }
-    })
   }
 
   init {
@@ -278,6 +272,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
       noteChild.userObject = Note(text)
       treeModel.nodeChanged(noteChild)
     }
+    project.service<AvecMoiInlayService>().noteChanged(handoff) // live-update the floated note
   }
 
   /** Navigate to a handoff, reading its (marker-tracked) line under a read action. */

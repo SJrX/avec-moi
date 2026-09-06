@@ -1,9 +1,11 @@
 package net.sjrx.intellij.plugins.avecmoi
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.editor.DefaultLanguageHighlighterColors
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.EditorCustomElementRenderer
 import com.intellij.openapi.editor.EditorFactory
@@ -19,7 +21,9 @@ import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Graphics
+import java.awt.Graphics2D
 import java.awt.Rectangle
+import java.awt.RenderingHints
 
 /**
  * Floats handoff notes above their line in open editors as block inlays — visual only, so the
@@ -64,9 +68,14 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val lineCount = editor.document.lineCount
       if (lineCount == 0) return@forEachIndexed
       val offset = editor.document.getLineStartOffset((handoff.line - 1).coerceIn(0, lineCount - 1))
-      editor.inlayModel.addBlockElement(offset, false, true, 0, NoteInlayRenderer(handoff.note, handoff.done))
+      editor.inlayModel.addBlockElement(offset, false, true, 0, NoteInlayRenderer(handoff))
         ?.let { inlays.add(it) }
     }
+  }
+
+  /** Live-update the inlay(s) for [handoff] (e.g. its note was edited in the pane) — no flicker. */
+  fun noteChanged(handoff: AvecMoiRingService.Handoff) = onEdt {
+    inlays.filter { (it.renderer as? NoteInlayRenderer)?.handoff === handoff }.forEach { it.update() }
   }
 
   private fun disposeInlaysFor(editor: Editor) {
@@ -85,28 +94,48 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     inlays.clear()
   }
 
-  /** Paints the (possibly multi-line) note above the line, greyed/italic; dimmer when done. */
-  private class NoteInlayRenderer(note: String, private val done: Boolean) : EditorCustomElementRenderer {
-    private val lines = note.split("\n").ifEmpty { listOf("") }
+  /**
+   * Paints the note (multi-line) above the line, styled like an inlay hint: a rounded hint-colored
+   * chip, the balloon icon on the first line, italic hint text, dimmed when done. Reads the handoff's
+   * note live so an edit only needs Inlay.update(), not a recreate. The icon avoids missing-glyph
+   * boxes for a text marker.
+   */
+  private class NoteInlayRenderer(val handoff: AvecMoiRingService.Handoff) : EditorCustomElementRenderer {
+    private val icon = AllIcons.General.Balloon
+    private val pad = JBUI.scale(5)
+    private val gap = JBUI.scale(4)
 
+    private fun lines() = handoff.note.split("\n").ifEmpty { listOf("") }
     private fun font(editor: Editor) = editor.colorsScheme.getFont(EditorFontType.ITALIC)
 
     override fun calcWidthInPixels(inlay: Inlay<*>): Int {
       val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
-      return (lines.maxOfOrNull { fm.stringWidth("✎  $it") } ?: 0) + JBUI.scale(12)
+      val textWidth = lines().maxOfOrNull { fm.stringWidth(it) } ?: 0
+      return pad + icon.iconWidth + gap + textWidth + pad
     }
 
-    override fun calcHeightInPixels(inlay: Inlay<*>): Int = inlay.editor.lineHeight * lines.size
+    override fun calcHeightInPixels(inlay: Inlay<*>): Int = inlay.editor.lineHeight * lines().size
 
     override fun paint(inlay: Inlay<*>, g: Graphics, targetRegion: Rectangle, textAttributes: TextAttributes) {
       val editor = inlay.editor
-      g.font = font(editor)
-      g.color = if (done) UIUtil.getInactiveTextColor() else JBColor.GRAY
+      val g2 = g as Graphics2D
+      g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+      val hint = editor.colorsScheme.getAttributes(DefaultLanguageHighlighterColors.INLINE_PARAMETER_HINT)
+      val lines = lines()
       val lineHeight = editor.lineHeight
-      val ascent = g.fontMetrics.ascent
+
+      hint?.backgroundColor?.let { bg ->
+        g2.color = bg
+        g2.fillRoundRect(targetRegion.x, targetRegion.y, calcWidthInPixels(inlay), targetRegion.height, JBUI.scale(8), JBUI.scale(8))
+      }
+      icon.paintIcon(editor.contentComponent, g2, targetRegion.x + pad, targetRegion.y + (lineHeight - icon.iconHeight) / 2)
+
+      g2.font = font(editor)
+      g2.color = if (handoff.done) UIUtil.getInactiveTextColor() else (hint?.foregroundColor ?: JBColor.GRAY)
+      val ascent = g2.fontMetrics.ascent
+      val textX = targetRegion.x + pad + icon.iconWidth + gap
       lines.forEachIndexed { i, line ->
-        val text = if (i == 0) "✎  $line" else "     $line"
-        g.drawString(text, targetRegion.x + JBUI.scale(2), targetRegion.y + i * lineHeight + ascent)
+        g2.drawString(line, textX, targetRegion.y + i * lineHeight + ascent)
       }
     }
   }
