@@ -5,6 +5,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.StoragePathMacros
+import com.intellij.util.xmlb.annotations.XCollection
 
 /** What happens to the target terminal when a quick action is sent to the agent. */
 enum class TerminalRevealBehavior(val label: String) {
@@ -13,10 +14,49 @@ enum class TerminalRevealBehavior(val label: String) {
   NONE("Do nothing"),
 }
 
+/** The human's self-reported familiarity with a subject (a language, framework, area, …). */
+enum class Familiarity(val label: String) {
+  NEW("New"),
+  RUSTY("Rusty"),
+  COMFORTABLE("Comfortable"),
+  FLUENT("Fluent");
+
+  override fun toString(): String = label
+}
+
+/** How thorough the agent should be when the human hits "Step Done". */
+enum class ReviewLevel(val label: String, val guidanceLine: String) {
+  LIGHT(
+    "Light",
+    "keep it light — a syntax + logic sanity check; do NOT run the full test suite or nitpick style unless the human asks.",
+  ),
+  NORMAL(
+    "Normal",
+    "read the change for correctness and obvious problems; quick checks are fine, but don't turn it into a full QA pass unless warranted.",
+  ),
+  THOROUGH(
+    "Thorough",
+    "review carefully — run the tests, check edge cases and error paths, and flag style/design concerns.",
+  ),
+}
+
+/** One row of the familiarity table: a subject and how familiar the human is with it. */
+class FamiliarityEntry {
+  var subject: String = ""
+  var level: Familiarity = Familiarity.COMFORTABLE
+
+  fun copy(): FamiliarityEntry = FamiliarityEntry().also { it.subject = subject; it.level = level }
+
+  override fun equals(other: Any?): Boolean =
+    other is FamiliarityEntry && other.subject == subject && other.level == level
+
+  override fun hashCode(): Int = subject.hashCode() * 31 + level.hashCode()
+}
+
 /**
- * Per-project avec-moi settings, persisted at the workspace level (per-user, not in VCS). The
- * agent-guidance knobs (goal, familiarity, review level, …) will land here too as the settings page
- * grows.
+ * Per-project avec-moi settings, persisted at the workspace level (per-user, not in VCS). Holds the
+ * quick-action behavior and the agent-guidance knobs (goal, familiarity, review depth, extra
+ * context) that compose the project brief the agent fetches via get_avecmoi_guidance.
  */
 @Service(Service.Level.PROJECT)
 @State(name = "AvecMoiSettings", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
@@ -25,6 +65,18 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
   class State {
     /** What to do with the terminal after sending a quick action to the agent. */
     var terminalOnSend: TerminalRevealBehavior = TerminalRevealBehavior.SHOW
+
+    /** What the human is working toward on this project (freeform). */
+    var goal: String = ""
+
+    /** How thorough review should be on "Step Done". */
+    var reviewLevel: ReviewLevel = ReviewLevel.NORMAL
+
+    /** Extra guidance the human wants appended verbatim to the brief. */
+    var extraContext: String = ""
+
+    @get:XCollection(style = XCollection.Style.v2)
+    var familiarity: MutableList<FamiliarityEntry> = mutableListOf()
   }
 
   private var state = State()
@@ -37,7 +89,25 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
 
   var terminalOnSend: TerminalRevealBehavior
     get() = state.terminalOnSend
-    set(value) {
-      state.terminalOnSend = value
-    }
+    set(value) { state.terminalOnSend = value }
+
+  var goal: String
+    get() = state.goal
+    set(value) { state.goal = value }
+
+  var reviewLevel: ReviewLevel
+    get() = state.reviewLevel
+    set(value) { state.reviewLevel = value }
+
+  var extraContext: String
+    get() = state.extraContext
+    set(value) { state.extraContext = value }
+
+  var familiarity: MutableList<FamiliarityEntry>
+    get() = state.familiarity
+    set(value) { state.familiarity = value }
+
+  /** The composed per-project brief the agent fetches (goal + familiarity + review + extra context). */
+  fun guidance(): String =
+    AvecMoiGuidance.composeBrief(state.goal, state.familiarity, state.reviewLevel, state.extraContext)
 }

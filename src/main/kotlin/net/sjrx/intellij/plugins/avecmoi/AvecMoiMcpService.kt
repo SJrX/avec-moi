@@ -187,6 +187,14 @@ class AvecMoiMcpService : Disposable {
         requiredString("projectPath", "Absolute path to a directory inside the project (e.g. your cwd)."),
       )
       tool(
+        "get_avecmoi_guidance",
+        "How the human wants to work in THIS project: their goal, self-reported familiarity (per " +
+          "language/framework/area), preferred review depth, and any extra context. Call this before " +
+          "starting work in a project (and again after a context reset) and let it shape how much you " +
+          "scaffold vs hand off, and how you review.",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+      )
+      tool(
         "register_handoffs",
         "Register the spots where you left work for the human to implement, so the IDE can navigate " +
           "them. Call after writing compiling stubs. Replaces any previously registered handoffs.",
@@ -334,6 +342,7 @@ class AvecMoiMcpService : Disposable {
         if (proj == null) textContent("No open project matches path: $path", isError = false)
         else textContent("Matched project '${proj.name}' at ${proj.basePath}", isError = false)
       }
+      "get_avecmoi_guidance" -> getGuidance(args)
       "register_handoffs" -> registerHandoffs(args)
       "add_handoff" -> addHandoff(args)
       "navigate_to" -> navigateTo(args)
@@ -372,6 +381,13 @@ class AvecMoiMcpService : Disposable {
     val winner = bestMatchingBasePath(candidates.map { it.second }, path) ?: return null
     return candidates.firstOrNull { it.second == winner }?.first
       ?.also { it.service<AvecMoiRingService>().recordContact() }
+  }
+
+  private fun getGuidance(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    return textContent(project.service<AvecMoiSettingsService>().guidance(), isError = false)
   }
 
   private fun registerHandoffs(args: JsonObject?): JsonObject {
@@ -665,7 +681,8 @@ class AvecMoiMcpService : Disposable {
      * agent can detect it's on a stale tool list after a rebuild ("server has N, I see fewer").
      */
     val TOOL_NAMES = listOf(
-      "ping", "list_projects", "resolve_project", "register_handoffs", "add_handoff", "navigate_to",
+      "ping", "list_projects", "resolve_project", "get_avecmoi_guidance", "register_handoffs",
+      "add_handoff", "navigate_to",
       "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
       "create_session", "list_sessions", "switch_session", "rename_session", "complete_session",
     )
@@ -675,7 +692,7 @@ class AvecMoiMcpService : Disposable {
      * This is where avec-moi's conventions live — it travels with the server, so every session
      * gets it with no per-project setup. Guidance, not a rigid workflow: the model decides specifics.
      */
-    private val INSTRUCTIONS = """
+    internal val INSTRUCTIONS = """
       avec-moi is a collaborative-coding server: you (the agent) design and scaffold, the human
       implements the load-bearing logic. The point is to keep the human engaged and fluent in
       their own codebase — "with me," not "for me." Work WITH the human, not around them.
@@ -688,6 +705,10 @@ class AvecMoiMcpService : Disposable {
       features, staying as sharp and engaged as they choose to be.
 
       How to use it:
+      - Before starting work in a project, call `get_avecmoi_guidance(projectPath)` to learn how the
+        human wants to work here — their goal, self-reported familiarity, and preferred review depth —
+        and let it shape how much you scaffold vs hand off, and how you review. Re-fetch it after a
+        context reset. (It may be empty if they haven't set anything; that's fine.)
       - Design the change and write stubs that at least parse / compile — no syntax errors (e.g.
         Kotlin `TODO("...")`, Python `raise NotImplementedError`) — so the human implements into
         working scaffolding rather than debugging yours. It need NOT be a fully green build: failing

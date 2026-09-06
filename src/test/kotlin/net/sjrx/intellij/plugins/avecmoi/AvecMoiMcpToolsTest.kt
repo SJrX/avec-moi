@@ -45,6 +45,19 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     assertTrue("any-contact must be set (at least yellow indicator)", mcp.anyContact())
   }
 
+  fun testGetGuidanceReturnsTheProjectsComposedBrief() {
+    // Fixture Setup — set some guidance on the resolved project
+    settings.goal = "Ship the parser"
+    settings.reviewLevel = ReviewLevel.LIGHT
+
+    // Exercise SUT
+    val text = callTool("get_avecmoi_guidance", """{ "projectPath": "$projectPath" }""").contentText()
+
+    // Verification — the brief reflects the settings
+    assertTrue("goal in brief: $text", text.contains("Ship the parser"))
+    assertTrue("light review in brief: $text", text.contains("keep it light"))
+  }
+
   fun testAToolCallForAnUnknownDirectoryReportsNoProject() {
     // Exercise SUT
     // language=JSON

@@ -24,12 +24,17 @@ abstract class AbstractAvecMoiTest : BasePlatformTestCase() {
     ring.loadState(AvecMoiRingService.PersistedState())
     ring.resetContactForTest()
     mcp.resetContactForTest()
+    project.service<AvecMoiSettingsService>().loadState(AvecMoiSettingsService.State())
   }
 
   // --- ring / session DSL ------------------------------------------------------------------------
 
   /** The project-level session + handoff store under test. */
   protected val ring: AvecMoiRingService
+    get() = project.service()
+
+  /** The project-level settings store under test. */
+  protected val settings: AvecMoiSettingsService
     get() = project.service()
 
   /** Copy state out of [from] into a brand-new store, exactly as reopening the IDE would. */
