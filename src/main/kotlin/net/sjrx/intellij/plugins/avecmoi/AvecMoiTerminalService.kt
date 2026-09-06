@@ -43,7 +43,9 @@ class AvecMoiTerminalService(private val project: Project) {
   fun send(text: String): Boolean {
     val tab = target() ?: return false
     val view = tab.view ?: return false
-    view.createSendTextBuilder().shouldExecute().send(text)
+    // Bracketed paste gives the TUI an explicit paste boundary, so the trailing Enter (shouldExecute)
+    // submits cleanly instead of being swallowed when the agent's paste-detection buffers a long line.
+    view.createSendTextBuilder().useBracketedPasteMode().shouldExecute().send(text)
     when (project.service<AvecMoiSettingsService>().terminalOnSend) {
       TerminalRevealBehavior.SHOW -> revealTerminal(tab, focus = false)
       TerminalRevealBehavior.SHOW_AND_FOCUS -> revealTerminal(tab, focus = true)
