@@ -25,8 +25,11 @@ class AskForHintAction : AnAction() {
 
   override fun update(e: AnActionEvent) {
     val project = e.project
-    // Enabled only when there's a terminal to send to (no session required).
-    e.presentation.isEnabled = project != null && project.service<AvecMoiTerminalService>().tabs().isNotEmpty()
+    // Needs an agent, an active session (the loop is running), and an editor to point the hint at.
+    e.presentation.isEnabled = project != null &&
+      project.service<AvecMoiTerminalService>().tabs().isNotEmpty() &&
+      project.service<AvecMoiRingService>().activeId() != null &&
+      FileEditorManager.getInstance(project).selectedTextEditor != null
   }
 
   override fun actionPerformed(e: AnActionEvent) {

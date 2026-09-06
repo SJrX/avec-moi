@@ -22,8 +22,11 @@ class StepDoneAction : AnAction() {
 
   override fun update(e: AnActionEvent) {
     val project = e.project
-    // Visible always, enabled only when there's a terminal to send to (no session required).
-    e.presentation.isEnabled = project != null && project.service<AvecMoiTerminalService>().tabs().isNotEmpty()
+    // Enabled only when there's an agent to signal AND an active session (the loop is running) —
+    // with no session there's no "step" to be done.
+    e.presentation.isEnabled = project != null &&
+      project.service<AvecMoiTerminalService>().tabs().isNotEmpty() &&
+      project.service<AvecMoiRingService>().activeId() != null
   }
 
   override fun actionPerformed(e: AnActionEvent) {
