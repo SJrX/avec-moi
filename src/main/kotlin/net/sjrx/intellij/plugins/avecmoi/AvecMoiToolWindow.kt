@@ -33,25 +33,19 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import com.intellij.ui.treeStructure.Tree
-import com.intellij.openapi.util.text.StringUtil
+import com.intellij.ui.OnePixelSplitter
+import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
-import java.awt.Component
-import java.awt.event.ComponentAdapter
-import java.awt.event.ComponentEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.Icon
-import javax.swing.JLabel
 import javax.swing.JPanel
-import javax.swing.SwingConstants
 import javax.swing.Timer
 import javax.swing.JComponent
 import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
-import javax.swing.tree.TreeCellRenderer
 import javax.swing.tree.TreePath
 
 /** The Avec Moi tool window: sessions grouped Active / Open / Historical, each a tree of handoffs. */
@@ -101,8 +95,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
   private val tree = Tree(treeModel).apply {
     isRootVisible = false
     showsRootHandles = true
-    cellRenderer = WrappingTreeRenderer()
-    rowHeight = 0 // variable per-row height, so note rows can grow to their wrapped height
+    cellRenderer = HandoffCellRenderer()
     addMouseListener(object : MouseAdapter() {
       override fun mouseClicked(e: MouseEvent) {
         if (e.clickCount == 2) onDoubleClick()
@@ -110,17 +103,27 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     })
   }
 
+  /**
+   * Read-only, word-wrapped view of the selected handoff's note. The tree rows can't wrap reliably
+   * (IntelliJ's tree UI doesn't honor variable row height), so the full note lives here instead.
+   */
+  private val noteDetail = JBTextArea().apply {
+    isEditable = false
+    lineWrap = true
+    wrapStyleWord = true
+    border = JBUI.Borders.empty(6, 8)
+    text = "Select a handoff to see its note."
+  }
+
   init {
-    // Re-wrap notes when the tool window is resized: toggling rowHeight forces the tree to recompute
-    // its cached variable row heights at the new width.
-    tree.addComponentListener(object : ComponentAdapter() {
-      override fun componentResized(e: ComponentEvent) {
-        tree.rowHeight = 1
-        tree.rowHeight = 0
-      }
-    })
+    tree.addTreeSelectionListener { updateNoteDetail() }
     toolbar = buildToolbar()
-    setContent(JBScrollPane(tree))
+    setContent(
+      OnePixelSplitter(true, 0.7f).apply {
+        firstComponent = JBScrollPane(tree)
+        secondComponent = JBScrollPane(noteDetail)
+      },
+    )
     PopupHandler.installFollowingSelectionTreePopup(
       tree,
       DefaultActionGroup().apply {
@@ -222,6 +225,21 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     }
   }
 
+  /** Fill the note pane from the current selection (a handoff row, or a note child of one). */
+  private fun updateNoteDetail() {
+    val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
+    val handoff = node?.userObject as? AvecMoiRingService.Handoff
+      ?: ((node?.userObject as? Note)?.let { node.parent as? DefaultMutableTreeNode })
+        ?.userObject as? AvecMoiRingService.Handoff
+    noteDetail.text = if (handoff != null) {
+      val line = ReadAction.compute<Int, RuntimeException> { handoff.line }
+      "${handoff.file}:$line\n\n${handoff.note.ifBlank { "(no note)" }}"
+    } else {
+      "Select a handoff to see its note."
+    }
+    noteDetail.caretPosition = 0
+  }
+
   /** Navigate to a handoff, reading its (marker-tracked) line under a read action. */
   private fun navigate(handoff: AvecMoiRingService.Handoff) {
     val line = ReadAction.compute<Int, RuntimeException> { handoff.line }
@@ -255,42 +273,6 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     return JPanel(BorderLayout()).apply {
       add(mainToolbar.component, BorderLayout.CENTER)
       add(statusToolbar.component, BorderLayout.EAST)
-    }
-  }
-
-  /**
-   * Wraps the (potentially long) note rows and delegates everything else to the colored renderer.
-   * Note nodes use an HTML JLabel whose width tracks the tree, so the text wraps; with the tree's
-   * variable row height that row grows to fit. All other node types keep the single-line colored look.
-   */
-  private inner class WrappingTreeRenderer : TreeCellRenderer {
-    private val colored = HandoffCellRenderer()
-    private val noteLabel = JLabel().apply {
-      verticalAlignment = SwingConstants.TOP
-      icon = AllIcons.General.Balloon
-      isOpaque = true
-      border = JBUI.Borders.empty(1, 2)
-    }
-
-    override fun getTreeCellRendererComponent(
-      tree: JTree,
-      value: Any?,
-      selected: Boolean,
-      expanded: Boolean,
-      leaf: Boolean,
-      row: Int,
-      hasFocus: Boolean,
-    ): Component {
-      val note = (value as? DefaultMutableTreeNode)?.userObject as? Note
-        ?: return colored.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus)
-
-      val depth = (value as DefaultMutableTreeNode).level
-      val available = (tree.width - depth * JBUI.scale(20) - JBUI.scale(44)).coerceAtLeast(JBUI.scale(120))
-      val text = StringUtil.escapeXmlEntities(note.text.ifBlank { "(no note)" })
-      noteLabel.text = "<html><body style='width:${available}px'><i>$text</i></body></html>"
-      noteLabel.foreground = if (selected) UIUtil.getTreeSelectionForeground(hasFocus) else UIUtil.getTreeForeground()
-      noteLabel.background = if (selected) UIUtil.getTreeSelectionBackground(hasFocus) else UIUtil.getTreeBackground()
-      return noteLabel
     }
   }
 
