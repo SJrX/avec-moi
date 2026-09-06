@@ -15,8 +15,16 @@ class AvecMoiColorSettingsPage : ColorSettingsPage {
   override fun getAttributeDescriptors(): Array<AttributesDescriptor> = DESCRIPTORS
   override fun getColorDescriptors(): Array<ColorDescriptor> = ColorDescriptor.EMPTY_ARRAY
   override fun getHighlighter(): SyntaxHighlighter = PlainSyntaxHighlighter()
-  override fun getDemoText(): String = "Handoff notes float above their line in the editor as inlays."
-  override fun getAdditionalHighlightingTagToDescriptorMap(): Map<String, TextAttributesKey>? = null
+
+  // The preview can't render a real inlay, so style a tagged phrase with the same attribute — it
+  // shows the exact bg/fg the note inlay uses, which is what you're editing here.
+  override fun getDemoText(): String =
+    "Handoff notes float above their line in the editor as inlays, e.g.\n\n" +
+      "<note>implement the partition step here — pivot on the last element,\n" +
+      "then recurse on the two halves</note>"
+
+  override fun getAdditionalHighlightingTagToDescriptorMap(): Map<String, TextAttributesKey> =
+    mapOf("note" to AvecMoiColors.NOTE_INLAY)
 
   companion object {
     private val DESCRIPTORS = arrayOf(AttributesDescriptor("Handoff note inlay", AvecMoiColors.NOTE_INLAY))
