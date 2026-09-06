@@ -5,7 +5,13 @@ MCP server
 - [ ] Multi-project / port tracking: server is per-project on a FIXED port (8282) → collides
       when multiple projects or IDEs are open at once. Options: pick a free port per project and
       write it into that project's .mcp.json, or run one app-level server that routes by project.
-- [ ] Make the port configurable (settings) instead of the 8282 constant.
+- [x] Make the port configurable (settings) instead of the 8282 constant. App-level AvecMoiMcpSettings
+      (IDE-wide), "MCP Server" group in settings, restart-on-change, connect dialog shows live port.
+- [x] Security: validate Origin/Host to block browser CSRF / DNS rebinding of the loopback server
+      (MCP spec). Legit clients send no Origin + a localhost Host; others get 403.
+- [ ] Security (remaining, low priority): loopback is shared on multi-user machines, so another local
+      user could call the no-auth server. A shared-secret token would close it, at the cost of
+      threading the token through `claude mcp add`. Defer unless multi-user is a real concern.
 - [x] Harden unknown-path responses: added a catch-all "/" context returning clean JSON 404, so
       Claude Code's "Re-authenticate" OAuth probe of non-/mcp paths parses fine and reads as "no
       auth required" instead of crashing on the JDK's HTML 404. (If a client ever wants explicit
