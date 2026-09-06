@@ -32,6 +32,20 @@ class AvecMoiMcpHttpServerTest : AbstractAvecMoiTest() {
     assertEquals("application/json", response.headers().firstValue("Content-Type").orElse(""))
   }
 
+  fun testABrowserOriginIsRejectedWith403() {
+    // Exercise SUT — a webpage trying to drive the server (CSRF)
+    val request = HttpRequest.newBuilder(URI("http://127.0.0.1:${port()}/mcp"))
+      .header("Origin", "http://evil.example.com")
+      .header("Content-Type", "application/json")
+      // language=JSON
+      .POST(HttpRequest.BodyPublishers.ofString("""{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }"""))
+      .build()
+    val response = client.send(request, BodyHandlers.ofString())
+
+    // Verification — blocked before dispatch
+    assertEquals(403, response.statusCode())
+  }
+
   fun testANonMcpPathReturnsACleanJson404() {
     // Exercise SUT — the kind of path an OAuth SDK probes
     val request = HttpRequest.newBuilder(URI("http://127.0.0.1:${port()}/.well-known/oauth-authorization-server"))

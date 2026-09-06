@@ -114,6 +114,10 @@ class AvecMoiMcpService : Disposable {
   private fun handle(ex: HttpExchange) {
     anyContact = true // any MCP request (initialize, tools/list, reconnect, …) = a client is here
     try {
+      // Defend the loopback server against browser-driven CSRF / DNS-rebinding: a real MCP client
+      // (claude-code) sends no Origin and a localhost Host; a webpage sends a real Origin, and a
+      // rebound request sends a non-local Host. Reject those. (Per the MCP Streamable-HTTP spec.)
+      if (!isLocalRequest(ex)) return respond(ex, 403, "{\"error\":\"forbidden\"}")
       when (ex.requestMethod) {
         "POST" -> handlePost(ex)
         else -> respond(ex, 405, null)
@@ -125,6 +129,9 @@ class AvecMoiMcpService : Disposable {
       ex.close()
     }
   }
+
+  private fun isLocalRequest(ex: HttpExchange): Boolean =
+    isLocalOriginAndHost(ex.requestHeaders.getFirst("Origin"), ex.requestHeaders.getFirst("Host"))
 
   private fun handlePost(ex: HttpExchange) {
     val body = ex.requestBody.readBytes().toString(StandardCharsets.UTF_8)
@@ -733,6 +740,23 @@ class AvecMoiMcpService : Disposable {
 
   companion object {
     const val PORT = 8282
+
+    /**
+     * Accept a request only if it isn't browser-driven: a real MCP client sends no `Origin` and a
+     * loopback `Host`. A webpage sends its site `Origin`; a DNS-rebound request sends a non-local
+     * `Host`. Reject those (defends the loopback server against CSRF / DNS rebinding). Pure/testable.
+     */
+    internal fun isLocalOriginAndHost(origin: String?, host: String?): Boolean {
+      if (origin != null && !isLoopbackAuthority(origin.substringAfter("://", origin))) return false
+      if (host != null && !isLoopbackAuthority(host)) return false
+      return true
+    }
+
+    private fun isLoopbackAuthority(authority: String): Boolean {
+      val a = authority.substringBefore('/')
+      val name = if (a.startsWith("[")) a.substringAfter('[').substringBefore(']') else a.substringBefore(':')
+      return name == "localhost" || name == "127.0.0.1" || name == "::1"
+    }
 
     /**
      * From a set of project base directories, pick the one that best contains [path]: the path must
