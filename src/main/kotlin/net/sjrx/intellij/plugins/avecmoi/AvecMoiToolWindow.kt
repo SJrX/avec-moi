@@ -231,12 +231,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     val handoff = node?.userObject as? AvecMoiRingService.Handoff
       ?: ((node?.userObject as? Note)?.let { node.parent as? DefaultMutableTreeNode })
         ?.userObject as? AvecMoiRingService.Handoff
-    noteDetail.text = if (handoff != null) {
-      val line = ReadAction.compute<Int, RuntimeException> { handoff.line }
-      "${handoff.file}:$line\n\n${handoff.note.ifBlank { "(no note)" }}"
-    } else {
-      "Select a handoff to see its note."
-    }
+    noteDetail.text = handoff?.note?.ifBlank { "(no note)" } ?: "Select a handoff to see its note."
     noteDetail.caretPosition = 0
   }
 
