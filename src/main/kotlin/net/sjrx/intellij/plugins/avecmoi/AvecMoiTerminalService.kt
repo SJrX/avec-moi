@@ -44,17 +44,18 @@ class AvecMoiTerminalService(private val project: Project) {
     val tab = target() ?: return false
     val view = tab.view ?: return false
     view.createSendTextBuilder().shouldExecute().send(text)
-    if (project.service<AvecMoiSettingsService>().focusTerminalOnSend) {
-      revealTerminal(tab)
+    when (project.service<AvecMoiSettingsService>().terminalOnSend) {
+      TerminalRevealBehavior.SHOW -> revealTerminal(tab, focus = false)
+      TerminalRevealBehavior.SHOW_AND_FOCUS -> revealTerminal(tab, focus = true)
+      TerminalRevealBehavior.NONE -> Unit
     }
     return true
   }
 
-  /** Show the terminal tool window and select [tab], WITHOUT moving keyboard focus off the editor. */
-  private fun revealTerminal(tab: TerminalToolWindowTab) {
+  /** Show the terminal tool window and select [tab]. When [focus] is false, keyboard focus stays put. */
+  private fun revealTerminal(tab: TerminalToolWindowTab, focus: Boolean) {
     val toolWindow = ToolWindowManager.getInstance(project)
       .getToolWindow(TerminalToolWindowFactory.TOOL_WINDOW_ID) ?: return
-    // autoFocusContents = false keeps the caret in the editor; we just reveal + select the tab.
-    toolWindow.activate({ toolWindow.contentManager.setSelectedContent(tab.content, false) }, false)
+    toolWindow.activate({ toolWindow.contentManager.setSelectedContent(tab.content, focus) }, focus)
   }
 }
