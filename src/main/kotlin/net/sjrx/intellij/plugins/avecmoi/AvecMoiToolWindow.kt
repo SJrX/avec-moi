@@ -122,6 +122,12 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
       override fun removeUpdate(e: javax.swing.event.DocumentEvent) = saveNote()
       override fun changedUpdate(e: javax.swing.event.DocumentEvent) = saveNote()
     })
+    // When editing settles (focus leaves), refresh the editor inlays so the floated note matches.
+    addFocusListener(object : java.awt.event.FocusAdapter() {
+      override fun focusLost(e: java.awt.event.FocusEvent) {
+        project.service<AvecMoiInlayService>().refreshAll()
+      }
+    })
   }
 
   init {

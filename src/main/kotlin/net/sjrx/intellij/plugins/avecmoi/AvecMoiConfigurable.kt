@@ -46,6 +46,12 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       }.bind(settings::terminalOnSend)
     }
 
+    group("Editor") {
+      buttonsGroup("Show handoff notes above their line in the editor:") {
+        EditorNoteScope.entries.forEach { scope -> row { radioButton(scope.label, scope) } }
+      }.bind(settings::editorNoteScope)
+    }
+
     group("Agent Guidance") {
       row {
         textArea().align(AlignX.FILL)
@@ -84,7 +90,11 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
 
     onReset { familiarityModel.items = settings.familiarity.map { it.copy() } }
     onIsModified { familiarityModel.items != settings.familiarity }
-    onApply { settings.familiarity = familiarityModel.items.map { it.copy() }.toMutableList() }
+    onApply {
+      settings.familiarity = familiarityModel.items.map { it.copy() }.toMutableList()
+      // Reflect an editorNoteScope change (and any note edits) in the editor inlays immediately.
+      project.service<AvecMoiInlayService>().refreshAll()
+    }
   }
 
   /** Show what the agent actually receives: the base "how avec-moi works" + this project's brief. */

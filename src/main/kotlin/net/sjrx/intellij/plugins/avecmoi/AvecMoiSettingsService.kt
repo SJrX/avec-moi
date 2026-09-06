@@ -14,6 +14,13 @@ enum class TerminalRevealBehavior(val label: String) {
   NONE("Do nothing"),
 }
 
+/** Which handoff notes to float above their line in the editor (as block inlays). */
+enum class EditorNoteScope(val label: String) {
+  ALL("All handoffs in the file"),
+  CURRENT("Only the current handoff"),
+  OFF("Off"),
+}
+
 /** The human's self-reported familiarity with a subject (a language, framework, area, …). */
 enum class Familiarity(val label: String) {
   NEW("New"),
@@ -66,6 +73,9 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
     /** What to do with the terminal after sending a quick action to the agent. */
     var terminalOnSend: TerminalRevealBehavior = TerminalRevealBehavior.SHOW
 
+    /** Which handoff notes to show above their line in the editor. */
+    var editorNoteScope: EditorNoteScope = EditorNoteScope.ALL
+
     /** What the human is working toward on this project (freeform). */
     var goal: String = ""
 
@@ -90,6 +100,10 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
   var terminalOnSend: TerminalRevealBehavior
     get() = state.terminalOnSend
     set(value) { state.terminalOnSend = value }
+
+  var editorNoteScope: EditorNoteScope
+    get() = state.editorNoteScope
+    set(value) { state.editorNoteScope = value }
 
   var goal: String
     get() = state.goal
