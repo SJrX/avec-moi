@@ -167,7 +167,7 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         "copy the whole line:\n\n${service<AvecMoiMcpService>().connectCommand()}\n\n" +
         "Then start (or restart) your agent session.",
       dialogTitle = "Avec Moi — Connect Command",
-      size = Dimension(760, 260),
+      size = Dimension(780, 320),
     ).show()
   }
 
@@ -235,7 +235,10 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         wrapStyleWord = true
         caretPosition = 0
       }
-      return JBScrollPane(area).apply { preferredSize = size }
+      return JBScrollPane(area).apply {
+        preferredSize = size
+        minimumSize = size // short content otherwise lets the dialog collapse below the preferred size
+      }
     }
 
     override fun createActions(): Array<Action> = arrayOf(okAction)
