@@ -42,7 +42,20 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     EditorFactory.getInstance().addEditorFactoryListener(
       object : EditorFactoryListener {
         override fun editorCreated(event: EditorFactoryEvent) {
-          if (event.editor.project == project) onEdt { refreshEditor(event.editor) }
+          if (event.editor.project != project) return
+          onEdt {
+            refreshEditor(event.editor)
+            // Re-measure the soft-wrapped notes when the editor's width changes (only width — ignore
+            // pure scrolling), so wrapping tracks a resized/split editor.
+            val editor = event.editor
+            var lastWidth = editor.scrollingModel.visibleArea.width
+            editor.scrollingModel.addVisibleAreaListener({ e ->
+              if (e.newRectangle.width != lastWidth) {
+                lastWidth = e.newRectangle.width
+                inlays.filter { it.editor === editor }.forEach { it.update() }
+              }
+            }, this@AvecMoiInlayService)
+          }
         }
       },
       this,
@@ -106,16 +119,47 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     private val pad = JBUI.scale(5)
     private val gap = JBUI.scale(4)
 
-    private fun lines() = handoff.note.split("\n").ifEmpty { listOf("") }
     private fun font(editor: Editor) = editor.colorsScheme.getFont(EditorFontType.ITALIC)
+
+    /**
+     * The note split into display lines, soft-wrapped to the editor's visible width so the agent
+     * needn't hard-wrap. The note's own newlines are honored as hard breaks (paragraphs, lists);
+     * each such logical line is then word-wrapped to fit the remaining width after the icon+padding.
+     * On a wide monitor this collapses to few lines; on a narrow one it wraps instead of overflowing.
+     */
+    private fun wrappedLines(inlay: Inlay<*>): List<String> {
+      val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
+      val budget = textWidthBudget(inlay.editor)
+      val out = ArrayList<String>()
+      for (logical in handoff.note.split("\n")) {
+        if (logical.isBlank()) { out.add(logical); continue }
+        val line = StringBuilder()
+        for (word in logical.split(" ")) {
+          val candidate = if (line.isEmpty()) word else "$line $word"
+          if (line.isEmpty() || fm.stringWidth(candidate) <= budget) {
+            line.setLength(0); line.append(candidate)
+          } else {
+            out.add(line.toString()); line.setLength(0); line.append(word)
+          }
+        }
+        out.add(line.toString())
+      }
+      return out.ifEmpty { listOf("") }
+    }
+
+    /** Pixels available for note text: the visible editor width minus the icon, padding, and a margin. */
+    private fun textWidthBudget(editor: Editor): Int {
+      val chrome = pad + icon.iconWidth + gap + pad
+      return (editor.scrollingModel.visibleArea.width - chrome - JBUI.scale(20)).coerceAtLeast(JBUI.scale(200))
+    }
 
     override fun calcWidthInPixels(inlay: Inlay<*>): Int {
       val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
-      val textWidth = lines().maxOfOrNull { fm.stringWidth(it) } ?: 0
+      val textWidth = wrappedLines(inlay).maxOfOrNull { fm.stringWidth(it) } ?: 0
       return pad + icon.iconWidth + gap + textWidth + pad
     }
 
-    override fun calcHeightInPixels(inlay: Inlay<*>): Int = inlay.editor.lineHeight * lines().size
+    override fun calcHeightInPixels(inlay: Inlay<*>): Int = inlay.editor.lineHeight * wrappedLines(inlay).size
 
     override fun paint(inlay: Inlay<*>, g: Graphics, targetRegion: Rectangle, textAttributes: TextAttributes) {
       val editor = inlay.editor
@@ -124,7 +168,7 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val key = if (handoff.done) AvecMoiColors.NOTE_INLAY_DONE else AvecMoiColors.NOTE_INLAY
       val attrs = editor.colorsScheme.getAttributes(key)
       val fg = attrs?.foregroundColor ?: if (handoff.done) NOTE_FG_DONE_FALLBACK else NOTE_FG_FALLBACK
-      val lines = lines()
+      val lines = wrappedLines(inlay)
       val lineHeight = editor.lineHeight
 
       attrs?.backgroundColor?.let { bg ->

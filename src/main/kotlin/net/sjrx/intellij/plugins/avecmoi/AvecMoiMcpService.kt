@@ -892,10 +892,11 @@ class AvecMoiMcpService : Disposable {
         think about it. For a distinct piece of work (or a second agent on this project), call
         `create_session("<name>")` to start a fresh one; `list_sessions` / `switch_session` /
         `rename_session` manage them; `complete_session` moves a finished one to Historical.
-      - Every handoff needs a specific note: what to implement here and why it matters. Format notes
-        as several short lines — put in real newlines and hard-wrap at a reasonable editor width
-        (about 80 columns). The IDE floats the note above the code as a multi-line inlay and does NOT
-        wrap long lines for you, so a single long line will run off-screen.
+      - Every handoff needs a specific note: what to implement here and why it matters. Use real
+        newlines and blank lines to give it structure — short paragraphs, or a list of steps — but do
+        NOT hard-wrap at a fixed column. The IDE floats the note above the code as a multi-line inlay
+        and soft-wraps long lines to the reader's editor width for them, so a long line is fine; just
+        break it where it reads naturally rather than cramming everything onto one line.
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
       - The human steps through the handoffs and implements them.
 
