@@ -370,9 +370,9 @@ class AvecMoiMcpService : Disposable {
         put("name", "mark_handoff_done")
         put(
           "description",
-          "Mark a handoff complete (by its 1-based number from list_handoffs) — e.g. after the human " +
-            "implemented it and you reviewed their work. It stays in the list, shown as done. Pass " +
-            "done=false to un-mark one.",
+          "Mark a handoff complete (by its 1-based number from list_handoffs). This is normally the " +
+            "AGENT's call, not the human's — you mark it after they implemented it and you reviewed " +
+            "their work. It stays in the list, shown as done. Pass done=false to un-mark one.",
         )
         putJsonObject("inputSchema") {
           put("type", "object")
@@ -908,8 +908,10 @@ class AvecMoiMcpService : Disposable {
         - a hint request: they're stuck and want a nudge, NOT for you to implement it.
       Review happens only when the human asks for it via these actions — it is not automatic, not
       required, and you should not nag. More quick actions may appear over time.
-      - As the human completes a handoff (and you review it), mark it with mark_handoff_done, or
-        remove_handoff if one no longer applies. The IDE shows todo vs done per row.
+      - Marking a handoff done is traditionally YOUR job, the agent's — not the human's. As they
+        finish each handoff (and you review it), you call mark_handoff_done for it; use remove_handoff
+        if one no longer applies. The IDE shows todo vs done per row. The human normally just
+        implements and signals you; don't expect or wait for them to tick things off themselves.
       - After a context reset or resume, call `list_handoffs` to recover what's currently registered
         rather than guessing. The ring lives in the IDE and is NOT saved across IDE restarts, so if
         list_handoffs comes back empty when you expected handoffs (the IDE restarted, or the human
