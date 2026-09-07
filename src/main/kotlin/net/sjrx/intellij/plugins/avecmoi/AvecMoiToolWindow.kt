@@ -77,7 +77,7 @@ class AvecMoiToolWindowFactory : ToolWindowFactory, DumbAware {
 internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleToolWindowPanel(true, true) {
 
   /** Header row marking one of the three session groups. */
-  private class Group(val label: String, val icon: Icon)
+  private class Group(val label: String, val icon: Icon, val showCount: Boolean = true)
 
   /** A handoff's note (distinguishes note child nodes from handoff nodes in the renderer). */
   private class Note(val text: String)
@@ -156,7 +156,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     val historical = sessions.filter { it.historical }
 
     root.removeAllChildren()
-    val activeGroup = DefaultMutableTreeNode(Group("Active Session", AllIcons.Nodes.Favorite))
+    val activeGroup = DefaultMutableTreeNode(Group("Active Session", AllIcons.Nodes.Favorite, showCount = false))
     active?.let { activeGroup.add(sessionNode(it)) }
     root.add(activeGroup)
     DefaultMutableTreeNode(Group("Open Sessions", AllIcons.Nodes.ModuleGroup)).also { g ->
@@ -326,7 +326,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
         is Group -> {
           icon = obj.icon
           append(obj.label, SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-          append("  ${node.childCount}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+          if (obj.showCount) append("  ${node.childCount}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
         is AvecMoiRingService.Session -> {
           icon = AllIcons.Nodes.Folder
