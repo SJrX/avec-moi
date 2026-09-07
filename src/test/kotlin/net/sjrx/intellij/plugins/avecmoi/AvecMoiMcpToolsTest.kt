@@ -13,7 +13,11 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     val result = callTool("register_handoffs", """
       { "projectPath": "$projectPath", "handoffs": [ ${handoffsJson.joinToString(", ")} ] }
     """.trimIndent())
-    assertFalse("register_handoffs errored: ${result.contentText()}", result.isError())
+    // Assert the batch was accepted, NOT that it's warning-free: these fixtures use paths that don't
+    // resolve on disk, so registration now (correctly) appends a "file not found" warning and flips
+    // isError. The mechanics under test are the stored handoffs, verified by each caller.
+    assertTrue("register_handoffs didn't register: ${result.contentText()}",
+      result.contentText().contains("Registered"))
   }
 
   // --- routing --------------------------------------------------------------------------------
@@ -94,10 +98,55 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
                       { "note": "no file, should be dropped" } ] }
     """.trimIndent())
 
-    // Verification — the call succeeds, but only the well-formed entry lands (documents the contract:
-    // per-entry `file` is required, and a malformed entry is skipped rather than failing the batch)
-    assertFalse(result.isError())
+    // Verification — only the well-formed entry lands (documents the contract: per-entry `file` is
+    // required, and a malformed entry is skipped rather than failing the whole batch).
+    assertTrue(result.contentText().contains("Registered 1 handoff"))
     assertEquals(listOf("keep"), ring.all().map { it.note })
+  }
+
+  // --- unresolved-file feedback (the monorepo-wrong-path failure) ------------------------------
+
+  fun testRegisterWarnsWhenHandoffFilesDoNotExistButStillStoresThem() {
+    // Exercise SUT — paths that don't resolve under the project root (the monorepo mistake: relative
+    // to a subdirectory instead of the root)
+    // language=JSON
+    val result = callTool("register_handoffs", """
+      { "projectPath": "$projectPath",
+        "handoffs": [ { "file": "schema/validate.go", "note": "validate" },
+                      { "file": "cmd/socle-gen/main.go", "note": "main" } ] }
+    """.trimIndent())
+
+    // Verification — the agent is told (isError so it notices), the offending paths + the project
+    // root are named so it can self-correct, and the handoffs ARE stored (so the human sees the same
+    // broken links and nothing is silently lost).
+    assertTrue("agent must be told something's wrong", result.isError())
+    val text = result.contentText()
+    assertTrue("names the failure: $text", text.contains("don't exist under the project root"))
+    assertTrue("names an offending path: $text", text.contains("schema/validate.go"))
+    assertTrue("names the project root so the agent can fix: $text", text.contains(projectPath))
+    assertEquals("handoffs still stored despite the warning", 2, ring.all().size)
+  }
+
+  fun testAddHandoffWarnsWhenItsFileDoesNotExist() {
+    // language=JSON
+    val result = callTool("add_handoff",
+      """{ "projectPath": "$projectPath", "file": "nope/missing.kt", "note": "x" }""")
+    assertTrue(result.isError())
+    assertTrue(result.contentText().contains("don't exist under the project root"))
+    assertEquals("still appended", 1, ring.all().size)
+  }
+
+  fun testUpdateHandoffWarnsWhenPointedAtAMissingFile() {
+    // Fixture Setup
+    register("""{ "file": "A.kt", "note": "x" }""")
+    // Exercise SUT — repoint #1 at a bogus path
+    // language=JSON
+    val result = callTool("update_handoff",
+      """{ "projectPath": "$projectPath", "handoff": 1, "file": "still/missing.kt" }""")
+    // Verification — warned, but the edit applied
+    assertTrue(result.isError())
+    assertTrue(result.contentText().contains("don't exist under the project root"))
+    assertEquals("still/missing.kt", ring.all()[0].file)
   }
 
   fun testListHandoffsOnAnEmptyProjectSaysSo() {

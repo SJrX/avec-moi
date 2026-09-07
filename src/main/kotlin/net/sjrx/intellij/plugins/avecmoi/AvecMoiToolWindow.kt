@@ -346,11 +346,20 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
         }
         is AvecMoiRingService.Handoff -> {
           val order = ((node.parent as? DefaultMutableTreeNode)?.getIndex(node) ?: 0) + 1
-          val iconAndLine = runReadActionBlocking { fileIconFor(obj.file) to obj.line }
-          icon = if (obj.done) LayeredIcon(iconAndLine.first, AllIcons.Nodes.DoneMark) else iconAndLine.first
+          val resolved = runReadActionBlocking { AvecMoiNavigation.resolveFile(project, obj.file) != null }
+          // A handoff whose file we can't find is dead — a wrong path (e.g. relative to a subdir in a
+          // monorepo). Flag it loudly rather than silently failing when the human clicks it.
+          val baseIcon = if (resolved) fileIconFor(obj.file) else AllIcons.General.Warning
+          icon = if (obj.done) LayeredIcon(baseIcon, AllIcons.Nodes.DoneMark) else baseIcon
           append("$order. ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-          append(obj.file.substringAfterLast('/'), if (obj.done) doneAttr else SimpleTextAttributes.REGULAR_ATTRIBUTES)
-          append(":${iconAndLine.second}", if (obj.done) doneAttr else SimpleTextAttributes.GRAYED_ATTRIBUTES)
+          val nameAttr = when {
+            obj.done -> doneAttr
+            !resolved -> SimpleTextAttributes.ERROR_ATTRIBUTES
+            else -> SimpleTextAttributes.REGULAR_ATTRIBUTES
+          }
+          append(obj.file.substringAfterLast('/'), nameAttr)
+          append(":${obj.line}", if (obj.done) doneAttr else SimpleTextAttributes.GRAYED_ATTRIBUTES)
+          if (!resolved) append("  — file not found", SimpleTextAttributes.ERROR_ATTRIBUTES)
         }
         is Note -> {
           icon = AllIcons.General.Balloon

@@ -496,6 +496,25 @@ class AvecMoiMcpService : Disposable {
     return textContent(project.service<AvecMoiSettingsService>().guidance(), isError = false)
   }
 
+  /**
+   * The handoff files that don't resolve to a real file under the project — the agent should fix
+   * these. Empty is the happy path. Since the agent scaffolds stubs BEFORE registering handoffs into
+   * them, a miss here almost always means the path is wrong (e.g. relative to a subdirectory in a
+   * multi-project repo), not that the file is legitimately absent.
+   */
+  private fun unresolvedFiles(project: Project, files: List<String>): List<String> =
+    runReadActionBlocking { files.distinct().filter { AvecMoiNavigation.resolveFile(project, it) == null } }
+
+  /** Shared guidance appended to the tool reply when some handoff files can't be found. */
+  private fun missingFilesWarning(project: Project, missing: List<String>): String =
+    "\n\nWARNING: ${missing.size} of these point to files that don't exist under the project root " +
+      "(${project.basePath}):\n" +
+      missing.joinToString("\n") { "  - $it" } +
+      "\n\nHandoff paths must be absolute, or relative to the PROJECT ROOT above — not to a " +
+      "subdirectory or the agent's cwd. In a multi-project repo this usually means a missing " +
+      "subdirectory prefix. Find the real paths (they're stored as-is, so the human sees the same " +
+      "broken links) and fix them with update_handoff, or re-run register_handoffs."
+
   private fun registerHandoffs(args: JsonObject?): JsonObject {
     val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
     val project = resolveProject(path)
@@ -510,11 +529,11 @@ class AvecMoiMcpService : Disposable {
       AvecMoiRingService.HandoffSpec(file, line, note)
     }
     project.service<AvecMoiRingService>().set(list)
-    return textContent(
-      "Registered ${list.size} handoff(s) for project '${project.name}'. " +
-        "The human can now step through them in the IDE.",
-      isError = false,
-    )
+    val base = "Registered ${list.size} handoff(s) for project '${project.name}'. " +
+      "The human can now step through them in the IDE."
+    val missing = unresolvedFiles(project, list.map { it.file })
+    return if (missing.isEmpty()) textContent(base, isError = false)
+    else textContent(base + missingFilesWarning(project, missing), isError = true)
   }
 
   private fun addHandoff(args: JsonObject?): JsonObject {
@@ -528,7 +547,10 @@ class AvecMoiMcpService : Disposable {
     val line = args?.get("line")?.jsonPrimitive?.intOrNull ?: 1
     val at = args?.get("position")?.jsonPrimitive?.intOrNull?.let { it - 1 } // 1-based -> 0-based; null appends
     val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note), at)
-    return textContent("Added handoff #$n in '${project.name}'.", isError = false)
+    val base = "Added handoff #$n in '${project.name}'."
+    val missing = unresolvedFiles(project, listOf(file))
+    return if (missing.isEmpty()) textContent(base, isError = false)
+    else textContent(base + missingFilesWarning(project, missing), isError = true)
   }
 
   private fun updateHandoff(args: JsonObject?): JsonObject {
@@ -544,7 +566,10 @@ class AvecMoiMcpService : Disposable {
       return textContent("Nothing to update — pass at least one of note, file, line.", isError = true)
     }
     return if (project.service<AvecMoiRingService>().update(n - 1, note, file, line)) {
-      textContent("Updated handoff #$n in '${project.name}'.", isError = false)
+      val base = "Updated handoff #$n in '${project.name}'."
+      val missing = if (file != null) unresolvedFiles(project, listOf(file)) else emptyList()
+      if (missing.isEmpty()) textContent(base, isError = false)
+      else textContent(base + missingFilesWarning(project, missing), isError = true)
     } else {
       textContent("No handoff #$n in '${project.name}'.", isError = true)
     }
