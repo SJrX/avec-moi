@@ -1,6 +1,9 @@
 package net.sjrx.intellij.plugins.avecmoi
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
@@ -11,6 +14,9 @@ import com.intellij.openapi.editor.Inlay
 import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.openapi.editor.event.EditorFactoryEvent
 import com.intellij.openapi.editor.event.EditorFactoryListener
+import com.intellij.openapi.editor.markup.GutterIconRenderer
+import com.intellij.openapi.editor.markup.HighlighterLayer
+import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
@@ -24,6 +30,8 @@ import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.Rectangle
 import java.awt.RenderingHints
+import java.util.Collections
+import java.util.IdentityHashMap
 import javax.swing.Icon
 
 /**
@@ -36,6 +44,14 @@ import javax.swing.Icon
 class AvecMoiInlayService(private val project: Project) : Disposable {
 
   private val inlays = mutableListOf<Inlay<*>>()
+
+  // Gutter chevrons that toggle each note (parallel to inlays; disposed together).
+  private val gutterMarkers = mutableListOf<Pair<Editor, RangeHighlighter>>()
+
+  // Notes the human collapsed, by identity — transient view state (not persisted). A collapsed note
+  // renders as a single ellipsized line; its gutter chevron flips to point right.
+  private val collapsed: MutableSet<AvecMoiRingService.Handoff> =
+    Collections.newSetFromMap(IdentityHashMap())
 
   fun start() {
     project.messageBus.connect(this).subscribe(AvecMoiRingService.TOPIC, AvecMoiRingListener { refreshAll() })
@@ -81,10 +97,22 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       if (AvecMoiNavigation.resolveFile(project, handoff.file)?.path != editorPath) return@forEachIndexed
       val lineCount = editor.document.lineCount
       if (lineCount == 0) return@forEachIndexed
-      val offset = editor.document.getLineStartOffset((handoff.line - 1).coerceIn(0, lineCount - 1))
-      editor.inlayModel.addBlockElement(offset, false, true, 0, NoteInlayRenderer(handoff))
+      val line = (handoff.line - 1).coerceIn(0, lineCount - 1)
+      val offset = editor.document.getLineStartOffset(line)
+      val isCollapsed = handoff in collapsed
+      editor.inlayModel.addBlockElement(offset, false, true, 0, NoteInlayRenderer(handoff, isCollapsed))
         ?.let { inlays.add(it) }
+      // A gutter chevron on the note's line, so the human can fold/unfold it like a code region.
+      val marker = editor.markupModel.addLineHighlighter(null, line, HighlighterLayer.ADDITIONAL_SYNTAX)
+      marker.gutterIconRenderer = NoteGutterIconRenderer(handoff, isCollapsed)
+      gutterMarkers.add(editor to marker)
     }
+  }
+
+  /** Fold/unfold [handoff]'s note (from its gutter chevron). Transient; just re-renders. */
+  fun toggleCollapsed(handoff: AvecMoiRingService.Handoff) = onEdt {
+    if (!collapsed.remove(handoff)) collapsed.add(handoff)
+    refreshAll()
   }
 
   /** Live-update the inlay(s) for [handoff] (e.g. its note was edited in the pane) — no flicker. */
@@ -96,6 +124,9 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     val gone = inlays.filter { it.editor === editor }
     gone.forEach { Disposer.dispose(it) }
     inlays.removeAll(gone.toSet())
+    val goneMarkers = gutterMarkers.filter { it.first === editor }
+    goneMarkers.forEach { (ed, rh) -> ed.markupModel.removeHighlighter(rh) }
+    gutterMarkers.removeAll(goneMarkers.toSet())
   }
 
   private inline fun onEdt(crossinline block: () -> Unit) {
@@ -106,6 +137,26 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
   override fun dispose() {
     inlays.forEach { Disposer.dispose(it) }
     inlays.clear()
+    gutterMarkers.forEach { (ed, rh) -> ed.markupModel.removeHighlighter(rh) }
+    gutterMarkers.clear()
+  }
+
+  /** Gutter chevron that folds/unfolds a note — the platform draws it and routes the click for us. */
+  private inner class NoteGutterIconRenderer(
+    private val handoff: AvecMoiRingService.Handoff,
+    private val isCollapsed: Boolean,
+  ) : GutterIconRenderer() {
+    override fun getIcon(): Icon = if (isCollapsed) AllIcons.General.ArrowRight else AllIcons.General.ArrowDown
+    override fun getAlignment(): Alignment = Alignment.LEFT
+    override fun getTooltipText(): String = if (isCollapsed) "Expand avec-moi note" else "Collapse avec-moi note"
+    override fun getClickAction(): AnAction = object : AnAction() {
+      override fun actionPerformed(e: AnActionEvent) = toggleCollapsed(handoff)
+    }
+
+    // Identity of the handoff + current state: the platform diff-updates gutter icons by equality.
+    override fun equals(other: Any?): Boolean =
+      other is NoteGutterIconRenderer && other.handoff === handoff && other.isCollapsed == isCollapsed
+    override fun hashCode(): Int = System.identityHashCode(handoff) * 31 + isCollapsed.hashCode()
   }
 
   /**
@@ -114,12 +165,31 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
    * note live so an edit only needs Inlay.update(), not a recreate. The icon avoids missing-glyph
    * boxes for a text marker.
    */
-  private class NoteInlayRenderer(val handoff: AvecMoiRingService.Handoff) : EditorCustomElementRenderer {
+  private class NoteInlayRenderer(
+    val handoff: AvecMoiRingService.Handoff,
+    private val collapsed: Boolean,
+  ) : EditorCustomElementRenderer {
     private val icon = ICON
     private val pad = JBUI.scale(5)
     private val gap = JBUI.scale(4)
 
     private fun font(editor: Editor) = editor.colorsScheme.getFont(EditorFontType.ITALIC)
+
+    /** What actually gets drawn: one ellipsized line when collapsed, else the soft-wrapped note. */
+    private fun displayLines(inlay: Inlay<*>): List<String> =
+      if (collapsed) listOf(collapsedLine(inlay)) else wrappedLines(inlay)
+
+    /** The note's first non-blank line, ellipsized to one editor-width line, with "…" if there's more. */
+    private fun collapsedLine(inlay: Inlay<*>): String {
+      val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
+      val budget = textWidthBudget(inlay.editor)
+      val first = handoff.note.split("\n").firstOrNull { it.isNotBlank() }?.trim() ?: ""
+      val hasMore = handoff.note.trim() != first // any content beyond that first line
+      if (!hasMore && fm.stringWidth(first) <= budget) return first
+      var s = first
+      while (s.isNotEmpty() && fm.stringWidth("$s…") > budget) s = s.dropLast(1)
+      return "$s…"
+    }
 
     /**
      * The note split into display lines, soft-wrapped to the editor's visible width so the agent
@@ -155,11 +225,11 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
 
     override fun calcWidthInPixels(inlay: Inlay<*>): Int {
       val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
-      val textWidth = wrappedLines(inlay).maxOfOrNull { fm.stringWidth(it) } ?: 0
+      val textWidth = displayLines(inlay).maxOfOrNull { fm.stringWidth(it) } ?: 0
       return pad + icon.iconWidth + gap + textWidth + pad
     }
 
-    override fun calcHeightInPixels(inlay: Inlay<*>): Int = inlay.editor.lineHeight * wrappedLines(inlay).size
+    override fun calcHeightInPixels(inlay: Inlay<*>): Int = inlay.editor.lineHeight * displayLines(inlay).size
 
     override fun paint(inlay: Inlay<*>, g: Graphics, targetRegion: Rectangle, textAttributes: TextAttributes) {
       val editor = inlay.editor
@@ -168,7 +238,7 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val key = if (handoff.done) AvecMoiColors.NOTE_INLAY_DONE else AvecMoiColors.NOTE_INLAY
       val attrs = editor.colorsScheme.getAttributes(key)
       val fg = attrs?.foregroundColor ?: if (handoff.done) NOTE_FG_DONE_FALLBACK else NOTE_FG_FALLBACK
-      val lines = wrappedLines(inlay)
+      val lines = displayLines(inlay)
       val lineHeight = editor.lineHeight
 
       attrs?.backgroundColor?.let { bg ->
