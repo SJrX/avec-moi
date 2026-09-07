@@ -15,8 +15,6 @@ import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.openapi.editor.event.EditorFactoryEvent
 import com.intellij.openapi.editor.event.EditorFactoryListener
 import com.intellij.openapi.editor.markup.GutterIconRenderer
-import com.intellij.openapi.editor.markup.HighlighterLayer
-import com.intellij.openapi.editor.markup.RangeHighlighter
 import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
@@ -44,9 +42,6 @@ import javax.swing.Icon
 class AvecMoiInlayService(private val project: Project) : Disposable {
 
   private val inlays = mutableListOf<Inlay<*>>()
-
-  // Gutter chevrons that toggle each note (parallel to inlays; disposed together).
-  private val gutterMarkers = mutableListOf<Pair<Editor, RangeHighlighter>>()
 
   // Notes the human collapsed, by identity — transient view state (not persisted). A collapsed note
   // renders as a single ellipsized line; its gutter chevron flips to point right.
@@ -101,12 +96,10 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val offset = editor.document.getLineStartOffset(line)
       val isCollapsed = handoff in collapsed
       val maxCols = project.service<AvecMoiSettingsService>().noteWrapMaxColumns
-      editor.inlayModel.addBlockElement(offset, false, true, 0, NoteInlayRenderer(handoff, isCollapsed, maxCols))
-        ?.let { inlays.add(it) }
-      // A gutter chevron on the note's line, so the human can fold/unfold it like a code region.
-      val marker = editor.markupModel.addLineHighlighter(null, line, HighlighterLayer.ADDITIONAL_SYNTAX)
-      marker.gutterIconRenderer = NoteGutterIconRenderer(handoff, isCollapsed)
-      gutterMarkers.add(editor to marker)
+      // The renderer carries its own gutter chevron (calcGutterIconRenderer), so the fold arrow lands
+      // on the note's own inlay row — not the code line below it.
+      val renderer = NoteInlayRenderer(handoff, isCollapsed, maxCols, NoteGutterIconRenderer(handoff, isCollapsed))
+      editor.inlayModel.addBlockElement(offset, false, true, 0, renderer)?.let { inlays.add(it) }
     }
   }
 
@@ -125,9 +118,6 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     val gone = inlays.filter { it.editor === editor }
     gone.forEach { Disposer.dispose(it) }
     inlays.removeAll(gone.toSet())
-    val goneMarkers = gutterMarkers.filter { it.first === editor }
-    goneMarkers.forEach { (ed, rh) -> ed.markupModel.removeHighlighter(rh) }
-    gutterMarkers.removeAll(goneMarkers.toSet())
   }
 
   private inline fun onEdt(crossinline block: () -> Unit) {
@@ -138,8 +128,6 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
   override fun dispose() {
     inlays.forEach { Disposer.dispose(it) }
     inlays.clear()
-    gutterMarkers.forEach { (ed, rh) -> ed.markupModel.removeHighlighter(rh) }
-    gutterMarkers.clear()
   }
 
   /** Gutter chevron that folds/unfolds a note — the platform draws it and routes the click for us. */
@@ -170,8 +158,12 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     val handoff: AvecMoiRingService.Handoff,
     private val collapsed: Boolean,
     private val maxColumns: Int,
+    private val gutter: GutterIconRenderer,
   ) : EditorCustomElementRenderer {
     private val icon = ICON
+
+    // Puts the fold chevron in the gutter aligned with THIS inlay row (not the code line beneath it).
+    override fun calcGutterIconRenderer(inlay: Inlay<*>): GutterIconRenderer = gutter
     private val pad = JBUI.scale(5)
     private val gap = JBUI.scale(4)
 
@@ -203,10 +195,13 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
       val budget = textWidthBudget(inlay.editor)
       val out = ArrayList<String>()
-      for (logical in handoff.note.split("\n")) {
-        if (logical.isBlank()) { out.add(logical); continue }
+      // trim() drops leading/trailing blank lines (a note ending in "\n" otherwise renders empty rows);
+      // trimEnd() per line drops trailing spaces that would pad the chip.
+      for (logical in handoff.note.trim().split("\n")) {
+        val stripped = logical.trimEnd()
+        if (stripped.isBlank()) { out.add(""); continue }
         val line = StringBuilder()
-        for (word in logical.split(" ")) {
+        for (word in stripped.split(" ")) {
           val candidate = if (line.isEmpty()) word else "$line $word"
           if (line.isEmpty() || fm.stringWidth(candidate) <= budget) {
             line.setLength(0); line.append(candidate)

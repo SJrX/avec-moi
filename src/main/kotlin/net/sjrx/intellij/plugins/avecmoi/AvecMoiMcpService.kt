@@ -269,9 +269,9 @@ class AvecMoiMcpService : Disposable {
               }
               putJsonObject("note") {
                 put("type", "string")
-                put("description", "What the human should implement here. Use real newlines and " +
-                  "hard-wrap at ~80 columns — it's shown as a multi-line inlay above the code and long " +
-                  "lines aren't wrapped for you.")
+                put("description", "What the human should implement here. Use real newlines and blank " +
+                  "lines for structure, but do NOT hard-wrap at a fixed column — it's a multi-line inlay " +
+                  "above the code and the IDE soft-wraps long lines to the reader's width for them.")
               }
             }
             putJsonArray("required") { add("file"); add("note") }
@@ -297,8 +297,8 @@ class AvecMoiMcpService : Disposable {
             putJsonObject("line") { put("type", "integer"); put("description", "1-based line of the stub.") }
             putJsonObject("note") {
               put("type", "string")
-              put("description", "What the human should implement here. Use real newlines, hard-wrap " +
-                "~80 columns (shown as a multi-line editor inlay; long lines aren't wrapped for you).")
+              put("description", "What the human should implement here. Use real newlines and blank " +
+                "lines for structure; do NOT hard-wrap at a fixed column (the IDE soft-wraps for the reader).")
             }
             putJsonObject("position") {
               put("type", "integer"); put("description", "1-based position to insert at; default appends to the end.")
@@ -327,8 +327,8 @@ class AvecMoiMcpService : Disposable {
             }
             putJsonObject("note") {
               put("type", "string")
-              put("description", "New note. Use real newlines, hard-wrap ~80 columns (multi-line inlay; " +
-                "long lines aren't wrapped for you).")
+              put("description", "New note. Use real newlines and blank lines for structure; do NOT " +
+                "hard-wrap at a fixed column (the IDE soft-wraps for the reader).")
             }
             putJsonObject("file") {
               put("type", "string"); put("description", "New file path (absolute, or relative to the project root).")
