@@ -14,6 +14,10 @@
   <extensions defaultExtensionNs="com.intellij">
     <postStartupActivity implementation="net.sjrx.intellij.plugins.avecmoi.AvecMoiStartup"/>
     <colorSettingsPage implementation="net.sjrx.intellij.plugins.avecmoi.AvecMoiColorSettingsPage"/>
+    <!-- Per-theme defaults for the note-inlay attributes (light / dark). Child schemes inherit. -->
+    <additionalTextAttributes scheme="Default" file="colorSchemes/AvecMoiIntelliJLight.xml"/>
+    <additionalTextAttributes scheme="IntelliJ Light" file="colorSchemes/AvecMoiIntelliJLight.xml"/>
+    <additionalTextAttributes scheme="Darcula" file="colorSchemes/AvecMoiDarcula.xml"/>
     <projectConfigurable parentId="tools"
                          id="net.sjrx.intellij.plugins.avecmoi.settings"
                          displayName="Avec Moi"

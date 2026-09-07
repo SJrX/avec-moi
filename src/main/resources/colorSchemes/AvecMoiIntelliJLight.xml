@@ -1,0 +1,10 @@
+<!-- Default note-inlay colors for light schemes: FILESTATUS_IGNORED foreground over the
+     FileColor "Yellow" (non-project) background. Merged in via additionalTextAttributes. -->
+<list>
+  <option name="AVEC_MOI_NOTE_INLAY">
+    <value>
+      <option name="FOREGROUND" value="8c4f00" />
+      <option name="BACKGROUND" value="fff9eb" />
+    </value>
+  </option>
+</list>
