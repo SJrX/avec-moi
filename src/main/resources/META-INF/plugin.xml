@@ -1,5 +1,5 @@
 <idea-plugin>
-  <id>net.sjrx.intellij.plugins.avecmoi</id>
+  <id>net.sjrx.plugins.avecmoi</id>
   <name>Avec Moi</name>
   <vendor email="vcolo@sjrx.net" url="https://sjrx.net">SJrX</vendor>
 
