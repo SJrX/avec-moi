@@ -100,7 +100,8 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val line = (handoff.line - 1).coerceIn(0, lineCount - 1)
       val offset = editor.document.getLineStartOffset(line)
       val isCollapsed = handoff in collapsed
-      editor.inlayModel.addBlockElement(offset, false, true, 0, NoteInlayRenderer(handoff, isCollapsed))
+      val maxCols = project.service<AvecMoiSettingsService>().noteWrapMaxColumns
+      editor.inlayModel.addBlockElement(offset, false, true, 0, NoteInlayRenderer(handoff, isCollapsed, maxCols))
         ?.let { inlays.add(it) }
       // A gutter chevron on the note's line, so the human can fold/unfold it like a code region.
       val marker = editor.markupModel.addLineHighlighter(null, line, HighlighterLayer.ADDITIONAL_SYNTAX)
@@ -168,6 +169,7 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
   private class NoteInlayRenderer(
     val handoff: AvecMoiRingService.Handoff,
     private val collapsed: Boolean,
+    private val maxColumns: Int,
   ) : EditorCustomElementRenderer {
     private val icon = ICON
     private val pad = JBUI.scale(5)
@@ -217,10 +219,17 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       return out.ifEmpty { listOf("") }
     }
 
-    /** Pixels available for note text: the visible editor width minus the icon, padding, and a margin. */
+    /**
+     * Pixels available for note text: the visible editor width minus the icon, padding, and a margin,
+     * further capped at [maxColumns] columns when that's set (> 0) so notes don't stretch too wide.
+     */
     private fun textWidthBudget(editor: Editor): Int {
       val chrome = pad + icon.iconWidth + gap + pad
-      return (editor.scrollingModel.visibleArea.width - chrome - JBUI.scale(20)).coerceAtLeast(JBUI.scale(200))
+      val viewport = (editor.scrollingModel.visibleArea.width - chrome - JBUI.scale(20)).coerceAtLeast(JBUI.scale(200))
+      if (maxColumns <= 0) return viewport
+      val fm = editor.contentComponent.getFontMetrics(font(editor))
+      val capPx = maxColumns * fm.charWidth('m')
+      return minOf(viewport, capPx).coerceAtLeast(JBUI.scale(200))
     }
 
     override fun calcWidthInPixels(inlay: Inlay<*>): Int {

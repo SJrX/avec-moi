@@ -52,6 +52,10 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       buttonsGroup("Show handoff notes above their line in the editor:") {
         EditorNoteScope.entries.forEach { scope -> row { radioButton(scope.label, scope) } }
       }.bind(settings::editorNoteScope)
+
+      row("Max note width (columns):") {
+        intTextField(0..500).bindIntText(settings::noteWrapMaxColumns)
+      }.rowComment("Soft-wrap notes at this many columns. 0 = no cap (wrap to the editor's visible width).")
     }
 
     group("MCP Server") {

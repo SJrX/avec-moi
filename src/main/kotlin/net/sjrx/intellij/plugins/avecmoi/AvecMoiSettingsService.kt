@@ -76,6 +76,13 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
     /** Which handoff notes to show above their line in the editor. */
     var editorNoteScope: EditorNoteScope = EditorNoteScope.ALL
 
+    /**
+     * Max width, in columns, that a note line soft-wraps at. 0 = no cap (wrap to the editor's visible
+     * width). A positive value caps the wrap at min(editor width, N columns) so notes don't stretch
+     * uncomfortably wide on a big monitor.
+     */
+    var noteWrapMaxColumns: Int = 0
+
     /** What the human is working toward on this project (freeform). */
     var goal: String = ""
 
@@ -104,6 +111,10 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
   var editorNoteScope: EditorNoteScope
     get() = state.editorNoteScope
     set(value) { state.editorNoteScope = value }
+
+  var noteWrapMaxColumns: Int
+    get() = state.noteWrapMaxColumns
+    set(value) { state.noteWrapMaxColumns = value }
 
   var goal: String
     get() = state.goal
