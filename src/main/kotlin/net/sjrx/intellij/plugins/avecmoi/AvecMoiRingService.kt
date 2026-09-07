@@ -188,11 +188,13 @@ class AvecMoiRingService(private val project: Project) :
     val ok = synchronized(this) {
       val s = activeLocked() ?: return@synchronized false
       val old = s.handoffs.getOrNull(index) ?: return@synchronized false
+      // old.line reads the marker's document, so take it under a read lock (we're off the EDT).
+      val oldLine = runReadActionBlocking { old.line }
       val fileChanged = file != null && file != old.file
-      val lineChanged = line != null && line != old.line
+      val lineChanged = line != null && line != oldLine
       if (fileChanged || lineChanged) {
         old.marker?.dispose()
-        val rebuilt = buildHandoffs(listOf(HandoffSpec(file ?: old.file, line ?: old.line, note ?: old.note))).first()
+        val rebuilt = buildHandoffs(listOf(HandoffSpec(file ?: old.file, line ?: oldLine, note ?: old.note))).first()
         rebuilt.done = old.done
         s.handoffs[index] = rebuilt
       } else if (note != null) {

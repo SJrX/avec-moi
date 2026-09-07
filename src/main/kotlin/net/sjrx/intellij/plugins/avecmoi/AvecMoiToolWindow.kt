@@ -346,10 +346,15 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
         }
         is AvecMoiRingService.Handoff -> {
           val order = ((node.parent as? DefaultMutableTreeNode)?.getIndex(node) ?: 0) + 1
-          val resolved = runReadActionBlocking { AvecMoiNavigation.resolveFile(project, obj.file) != null }
-          // A handoff whose file we can't find is dead — a wrong path (e.g. relative to a subdir in a
-          // monorepo). Flag it loudly rather than silently failing when the human clicks it.
-          val baseIcon = if (resolved) fileIconFor(obj.file) else AllIcons.General.Warning
+          // obj.line is RangeMarker-backed (reads the document), and file resolution touches the VFS —
+          // both need a read action, and the tree renderer runs on the EDT during layout, so do them
+          // together here. A handoff whose file we can't find is dead (e.g. a wrong path in a monorepo);
+          // flag it loudly rather than silently failing when the human clicks it.
+          val (resolved, line, resolvedIcon) = runReadActionBlocking {
+            val vf = AvecMoiNavigation.resolveFile(project, obj.file)
+            Triple(vf != null, obj.line, vf?.fileType?.icon ?: AllIcons.FileTypes.Unknown)
+          }
+          val baseIcon = if (resolved) resolvedIcon else AllIcons.General.Warning
           icon = if (obj.done) LayeredIcon(baseIcon, AllIcons.Nodes.DoneMark) else baseIcon
           append("$order. ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
           val nameAttr = when {
@@ -358,7 +363,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
             else -> SimpleTextAttributes.REGULAR_ATTRIBUTES
           }
           append(obj.file.substringAfterLast('/'), nameAttr)
-          append(":${obj.line}", if (obj.done) doneAttr else SimpleTextAttributes.GRAYED_ATTRIBUTES)
+          append(":$line", if (obj.done) doneAttr else SimpleTextAttributes.GRAYED_ATTRIBUTES)
           if (!resolved) append("  — file not found", SimpleTextAttributes.ERROR_ATTRIBUTES)
         }
         is Note -> {
