@@ -59,7 +59,8 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         intTextField(1024..65535).bindIntText(mcpSettings::port)
       }.rowComment(
         "One avec-moi MCP server serves all projects in this IDE. Changing the port restarts it — " +
-          "re-run 'claude mcp add … http://localhost:<port>/mcp' with the new port afterward.",
+          "re-run 'claude mcp add … http://localhost:&lt;port&gt;/mcp' with the new port afterward " +
+          "(the connection dialog shows the exact command).",
       )
     }
 
