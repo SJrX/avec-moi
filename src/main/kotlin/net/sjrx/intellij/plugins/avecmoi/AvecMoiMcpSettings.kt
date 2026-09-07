@@ -47,10 +47,9 @@ class AvecMoiMcpSettings : PersistentStateComponent<AvecMoiMcpSettings.State> {
 
   companion object {
     // Alphanumeric only: safe in an HTTP header value, a shell/console command, and a URL — no
-    // quoting or escaping needed. 24 chars over a 62-char alphabet ≈ 143 bits: plenty for a
-    // localhost shared secret, without being obnoxiously long.
+    // quoting or escaping needed. 43 chars over a 62-char alphabet ≈ 256 bits of entropy.
     private const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    private const val TOKEN_LENGTH = 24
+    private const val TOKEN_LENGTH = 43
 
     internal fun generateToken(): String {
       val rnd = SecureRandom()

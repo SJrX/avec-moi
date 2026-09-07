@@ -16,13 +16,13 @@ class McpAuthTest {
     // Alphanumeric only = safe in an HTTP header, a shell command, and a URL with no escaping.
     repeat(50) {
       val t = AvecMoiMcpSettings.generateToken()
-      assertTrue("token must be 24 url/console-safe chars, was '$t'", t.matches(Regex("[A-Za-z0-9]{24}")))
+      assertTrue("token must be 43 url/console-safe chars (~256 bits), was '$t'", t.matches(Regex("[A-Za-z0-9]{43}")))
     }
   }
 
   @Test
   fun generatedTokensDoNotCollide() {
-    // SecureRandom over ~143 bits: 100 draws should be unique (a collision here means a broken source).
+    // SecureRandom over ~256 bits: 100 draws should be unique (a collision here means a broken source).
     val tokens = (1..100).map { AvecMoiMcpSettings.generateToken() }.toSet()
     assertTrue("secure-random tokens must not repeat, got ${tokens.size}/100 unique", tokens.size == 100)
   }
