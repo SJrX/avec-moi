@@ -24,10 +24,22 @@ fun gitDescribe(): String {
 
 val JavaVersion = 21
 
+/**
+ * Local build number: how many plugin zips already sit in build/distributions, plus one — so each
+ * `buildPlugin` bumps it and the newest artifact has the highest .N (even for repeated dirty builds
+ * on the same sha). Resets to 1 after `clean` (the folder is empty then anyway). CI overrides via
+ * the BUILD_NUMBER env var.
+ */
+fun nextBuildNumber(): Int {
+  val dist = project.layout.buildDirectory.get().asFile.resolve("distributions")
+  val zips = dist.listFiles { f -> f.isFile && f.extension == "zip" }?.size ?: 0
+  return zips + 1
+}
+
 fun getVersionNumber(): String {
   val major = properties("pluginMajorVersion")
   val minor = LocalDate.now().format(ofPattern("yyMMdd"))
-  val build = System.getenv("BUILD_NUMBER") ?: 1
+  val build = System.getenv("BUILD_NUMBER") ?: nextBuildNumber().toString()
 
   // On CI, BRANCH_NAME is set (a NNN.x release branch drops the suffix). Locally, fall back to the
   // git sha (+ -dirty) instead of "undefined" so the suffix actually disambiguates builds.
