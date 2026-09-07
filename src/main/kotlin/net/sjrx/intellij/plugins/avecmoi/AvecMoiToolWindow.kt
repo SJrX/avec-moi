@@ -532,14 +532,15 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
           project,
           "An agent has connected to Avec Moi, but hasn't done anything in THIS project yet.\n\n" +
             "If it's meant to work here, make sure it calls tools with this project's path (its cwd):" +
-            "\n  ${project.basePath}",
+            "\n  ${project.basePath}\n\n" +
+            "If its tool calls are failing with 401 / unauthorized, its auth token is missing or stale — " +
+            "re-run the connect command:\n  ${mcp.connectCommand()}",
           "Avec Moi — Agent Connection",
         )
         AvecMoiConnectionState.NONE -> Messages.showInfoMessage(
           project,
           "No agent has contacted Avec Moi this session.\n\n" +
-            "To connect, run:\n  claude mcp add --scope user --transport http avec-moi " +
-            "http://localhost:${mcp.currentPort()}/mcp\n" +
+            "To connect, run:\n  ${mcp.connectCommand()}\n\n" +
             "then start (or restart) your agent session.",
           "Avec Moi — Agent Connection",
         )

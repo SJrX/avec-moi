@@ -1,5 +1,6 @@
 package net.sjrx.intellij.plugins.avecmoi
 
+import com.intellij.openapi.components.service
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -17,10 +18,13 @@ class AvecMoiMcpHttpServerTest : AbstractAvecMoiTest() {
 
   private fun port(): Int = mcp.startOnEphemeralPortForTest(testRootDisposable)
 
+  private fun authHeader(): String = "Bearer " + service<AvecMoiMcpSettings>().token()
+
   fun testServesInitializeOverRealHttp() {
-    // Exercise SUT
+    // Exercise SUT — an authorized request (the header the connect command sets)
     val request = HttpRequest.newBuilder(URI("http://127.0.0.1:${port()}/mcp"))
       .header("Content-Type", "application/json")
+      .header("Authorization", authHeader())
       // language=JSON
       .POST(HttpRequest.BodyPublishers.ofString("""{ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }"""))
       .build()
@@ -30,6 +34,34 @@ class AvecMoiMcpHttpServerTest : AbstractAvecMoiTest() {
     assertEquals(200, response.statusCode())
     assertTrue("expected an initialize result: ${response.body()}", response.body().contains("serverInfo"))
     assertEquals("application/json", response.headers().firstValue("Content-Type").orElse(""))
+  }
+
+  fun testAMcpRequestWithoutTheAuthTokenIsRejectedWith401() {
+    // Exercise SUT — a local process that doesn't know the secret (no Authorization header)
+    val request = HttpRequest.newBuilder(URI("http://127.0.0.1:${port()}/mcp"))
+      .header("Content-Type", "application/json")
+      // language=JSON
+      .POST(HttpRequest.BodyPublishers.ofString("""{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }"""))
+      .build()
+    val response = client.send(request, BodyHandlers.ofString())
+
+    // Verification — blocked before dispatch, with a clean JSON body
+    assertEquals(401, response.statusCode())
+    assertTrue("expected an unauthorized body: ${response.body()}", response.body().contains("unauthorized"))
+  }
+
+  fun testAMcpRequestWithTheWrongAuthTokenIsRejectedWith401() {
+    // Exercise SUT — knows there's a bearer scheme but has the wrong secret
+    val request = HttpRequest.newBuilder(URI("http://127.0.0.1:${port()}/mcp"))
+      .header("Content-Type", "application/json")
+      .header("Authorization", "Bearer not-the-real-token")
+      // language=JSON
+      .POST(HttpRequest.BodyPublishers.ofString("""{ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }"""))
+      .build()
+    val response = client.send(request, BodyHandlers.ofString())
+
+    // Verification
+    assertEquals(401, response.statusCode())
   }
 
   fun testABrowserOriginIsRejectedWith403() {

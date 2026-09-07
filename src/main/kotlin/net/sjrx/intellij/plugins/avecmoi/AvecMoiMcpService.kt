@@ -86,6 +86,13 @@ class AvecMoiMcpService : Disposable {
 
   fun currentPort(): Int = activePort
 
+  /** The exact command the human runs to register this server with their agent, token included. */
+  fun connectCommand(): String {
+    val token = service<AvecMoiMcpSettings>().token()
+    return "claude mcp add --scope user --transport http avec-moi " +
+      "http://localhost:${currentPort()}/mcp --header \"Authorization: Bearer $token\""
+  }
+
   fun isRunning(): Boolean = server != null
 
   /** Non-null when the server isn't running because start failed (e.g. the port is already taken). */
@@ -170,6 +177,11 @@ class AvecMoiMcpService : Disposable {
       // (claude-code) sends no Origin and a localhost Host; a webpage sends a real Origin, and a
       // rebound request sends a non-local Host. Reject those. (Per the MCP Streamable-HTTP spec.)
       if (!isLocalRequest(ex)) return respond(ex, 403, "{\"error\":\"forbidden\"}")
+      // Shared-secret gate: only a client that sent the configured Bearer token (via the connect
+      // command) may drive the IDE. Keeps other local processes off the endpoint.
+      if (!isValidToken(ex.requestHeaders.getFirst("Authorization"), service<AvecMoiMcpSettings>().token())) {
+        return respond(ex, 401, "{\"error\":\"unauthorized\"}")
+      }
       when (ex.requestMethod) {
         "POST" -> handlePost(ex)
         else -> respond(ex, 405, null)
@@ -958,6 +970,17 @@ class AvecMoiMcpService : Disposable {
       val a = authority.substringBefore('/')
       val name = if (a.startsWith("[")) a.substringAfter('[').substringBefore(']') else a.substringBefore(':')
       return name == "localhost" || name == "127.0.0.1" || name == "::1"
+    }
+
+    /**
+     * Whether an `Authorization` header carries exactly `Bearer <token>`. The scheme is case-sensitive
+     * (a real client sends "Bearer"). Compared in constant time so a wrong token can't be recovered by
+     * timing. Pure so it's unit-testable.
+     */
+    internal fun isValidToken(authHeader: String?, token: String): Boolean {
+      val expected = "Bearer $token".toByteArray(Charsets.UTF_8)
+      val actual = (authHeader ?: return false).toByteArray(Charsets.UTF_8)
+      return java.security.MessageDigest.isEqual(actual, expected)
     }
 
     /**

@@ -3,6 +3,7 @@ package net.sjrx.intellij.plugins.avecmoi
 import com.intellij.openapi.components.service
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.ui.DialogWrapper
@@ -71,8 +72,15 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         intTextField(1024..65535).bindIntText(mcpSettings::port)
       }.rowComment(
         "One avec-moi MCP server serves all projects in this IDE. Changing the port restarts it — " +
-          "re-run 'claude mcp add … http://localhost:&lt;port&gt;/mcp' with the new port afterward " +
-          "(the connection dialog shows the exact command).",
+          "re-run the connect command below with the new port afterward.",
+      )
+      row {
+        button("Show connect command") { showConnectCommand() }
+        button("Regenerate auth token") { regenerateAuthToken() }
+      }.rowComment(
+        "The server requires a secret auth token (in the connect command's Authorization header), so " +
+          "only your configured agent can drive the IDE. Regenerating it invalidates the old command — " +
+          "re-run the new one everywhere you added it.",
       )
     }
 
@@ -152,6 +160,30 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
     GuidancePreviewDialog(project, text).show()
   }
 
+  private fun showConnectCommand() {
+    GuidancePreviewDialog(
+      project,
+      "Run this to register the avec-moi server with your agent — it includes the auth token, so " +
+        "copy the whole line:\n\n${service<AvecMoiMcpService>().connectCommand()}\n\n" +
+        "Then start (or restart) your agent session.",
+      dialogTitle = "Avec Moi — Connect Command",
+      size = Dimension(760, 260),
+    ).show()
+  }
+
+  private fun regenerateAuthToken() {
+    val confirm = Messages.showYesNoDialog(
+      project,
+      "Generate a new auth token? The current one stops working immediately — every place you added " +
+        "the avec-moi server must re-run the new connect command.",
+      "Regenerate Auth Token",
+      Messages.getWarningIcon(),
+    )
+    if (confirm != Messages.YES) return
+    mcpSettings.regenerateToken()
+    showConnectCommand()
+  }
+
   private class SubjectColumn : ColumnInfo<FamiliarityEntry, String>("Subject") {
     override fun valueOf(item: FamiliarityEntry): String = item.subject
     override fun isCellEditable(item: FamiliarityEntry): Boolean = true
@@ -185,9 +217,14 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       DefaultCellEditor(ComboBox(FamiliarityScope.entries.toTypedArray()))
   }
 
-  private class GuidancePreviewDialog(project: Project, private val text: String) : DialogWrapper(project) {
+  private class GuidancePreviewDialog(
+    project: Project,
+    private val text: String,
+    dialogTitle: String = "Avec Moi — Effective Guidance",
+    private val size: Dimension = Dimension(700, 520),
+  ) : DialogWrapper(project) {
     init {
-      title = "Avec Moi — Effective Guidance"
+      title = dialogTitle
       init()
     }
 
@@ -198,7 +235,7 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         wrapStyleWord = true
         caretPosition = 0
       }
-      return JBScrollPane(area).apply { preferredSize = Dimension(700, 520) }
+      return JBScrollPane(area).apply { preferredSize = size }
     }
 
     override fun createActions(): Array<Action> = arrayOf(okAction)
