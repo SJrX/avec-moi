@@ -888,6 +888,12 @@ class AvecMoiMcpService : Disposable {
         rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
       - To add a spot mid-flight, use `add_handoff` (appends one, preserving existing progress);
         register_handoffs replaces the whole set and resets done-state.
+      - Keep the handoffs in sync with the plan. If something you discuss with the human changes what a
+        handoff should say, point to, or whether it still applies, your DEFAULT is to just update it
+        (`update_handoff`, `add_handoff`, or `remove_handoff`) — the human is looking at these in the
+        IDE, so stale handoffs mislead them. For small/medium corrections, do it silently unless they
+        tell you otherwise. Only pause to confirm first if the change is disruptive or a radical rework
+        (e.g. re-registering the whole set, or discarding work they've already done).
       - Handoffs live in a SESSION; the active one is used automatically, so you usually needn't
         think about it. For a distinct piece of work (or a second agent on this project), call
         `create_session("<name>")` to start a fresh one; `list_sessions` / `switch_session` /
