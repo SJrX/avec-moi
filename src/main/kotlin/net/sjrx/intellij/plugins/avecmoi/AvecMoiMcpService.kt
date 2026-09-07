@@ -888,12 +888,17 @@ class AvecMoiMcpService : Disposable {
         rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
       - To add a spot mid-flight, use `add_handoff` (appends one, preserving existing progress);
         register_handoffs replaces the whole set and resets done-state.
-      - Keep the handoffs in sync with the plan. If something you discuss with the human changes what a
-        handoff should say, point to, or whether it still applies, your DEFAULT is to just update it
-        (`update_handoff`, `add_handoff`, or `remove_handoff`) — the human is looking at these in the
-        IDE, so stale handoffs mislead them. For small/medium corrections, do it silently unless they
-        tell you otherwise. Only pause to confirm first if the change is disruptive or a radical rework
-        (e.g. re-registering the whole set, or discarding work they've already done).
+      - KEEP THE HANDOFFS IN SYNC WITH THE PLAN. A really bad failure mode: you and the human discuss a
+        change, you DON'T update the handoffs, and they go implement the now-stale handoffs and waste
+        their time. The human trusts what's shown in the IDE. So whenever a discussion changes what a
+        handoff should say, point to, or whether it still applies, you MUST do one of two things:
+          1. (DEFAULT) Just update it — `update_handoff` / `add_handoff` / `remove_handoff`. For
+             small/medium corrections, do this without asking unless they've told you otherwise.
+          2. If you're deliberately holding off (e.g. it's a disruptive/radical rework — re-registering
+             the whole set, or discarding work they've already done — and you want to confirm first),
+             then say so LOUDLY and up front: state clearly that the handoffs are now STALE and list
+             what would change, pending their go-ahead. Never bury this in a wall of text.
+        The one thing you must not do is silently leave the handoffs out of sync with what you just agreed.
       - Handoffs live in a SESSION; the active one is used automatically, so you usually needn't
         think about it. For a distinct piece of work (or a second agent on this project), call
         `create_session("<name>")` to start a fresh one; `list_sessions` / `switch_session` /
