@@ -90,6 +90,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
   private val statusHere = AllIcons.RunConfigurations.TestState.Green2
   private val statusElsewhere = AllIcons.RunConfigurations.TestState.Yellow2
   private val statusRed = AllIcons.RunConfigurations.TestState.Red2
+  private val statusDown = AllIcons.General.Error
   private var toolbarRef: ActionToolbar? = null
 
   private val tree = Tree(treeModel).apply {
@@ -424,18 +425,25 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
    */
   private inner class ConnectionStatusAction : AnAction(), DumbAware {
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
-    private fun currentState(): AvecMoiConnectionState = AvecMoiConnectionState.of(
-      project.service<AvecMoiRingService>().isContacted(),
-      service<AvecMoiMcpService>().anyContact(),
-    )
+    private fun currentState(): AvecMoiConnectionState {
+      val mcp = service<AvecMoiMcpService>()
+      return AvecMoiConnectionState.of(
+        mcp.isRunning(),
+        project.service<AvecMoiRingService>().isContacted(),
+        mcp.anyContact(),
+      )
+    }
 
     override fun update(e: AnActionEvent) {
-      e.presentation.icon = when (currentState()) {
+      val state = currentState()
+      e.presentation.icon = when (state) {
+        AvecMoiConnectionState.SERVER_DOWN -> statusDown
         AvecMoiConnectionState.HERE -> statusHere
         AvecMoiConnectionState.ELSEWHERE -> statusElsewhere
         AvecMoiConnectionState.NONE -> statusRed
       }
-      e.presentation.text = when (currentState()) {
+      e.presentation.text = when (state) {
+        AvecMoiConnectionState.SERVER_DOWN -> "MCP server not running"
         AvecMoiConnectionState.HERE -> "Connected"
         AvecMoiConnectionState.ELSEWHERE -> "Connected (other project)"
         AvecMoiConnectionState.NONE -> "No Connection"
@@ -443,14 +451,31 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     }
 
     override fun actionPerformed(e: AnActionEvent) {
+      val mcp = service<AvecMoiMcpService>()
+      if (currentState() == AvecMoiConnectionState.SERVER_DOWN) {
+        val retry = Messages.showYesNoDialog(
+          project,
+          "The avec-moi MCP server isn't running:\n\n  ${mcp.startError() ?: "failed to start"}\n\n" +
+            "Close the other IDE (or change the port in Settings | Tools | Avec Moi), then retry.\n\n" +
+            "Retry starting it now?",
+          "Avec Moi — MCP Server Not Running",
+          Messages.getWarningIcon(),
+        )
+        if (retry == Messages.YES) {
+          mcp.startIfNeeded()
+          refreshToolbar()
+        }
+        return
+      }
       val msg = when (currentState()) {
         AvecMoiConnectionState.HERE -> "An agent has worked with Avec Moi in this project this session."
         AvecMoiConnectionState.ELSEWHERE -> "An agent is connected, but hasn't targeted THIS project yet.\n\n" +
           "Make sure it calls tools with this project's path (its cwd):\n  ${project.basePath}"
         AvecMoiConnectionState.NONE -> "No agent has contacted Avec Moi this session.\n\n" +
           "To connect, run:\n  claude mcp add --scope user --transport http avec-moi " +
-          "http://localhost:${service<AvecMoiMcpService>().currentPort()}/mcp\n" +
+          "http://localhost:${mcp.currentPort()}/mcp\n" +
           "then start (or restart) your agent session."
+        AvecMoiConnectionState.SERVER_DOWN -> return // handled above
       }
       Messages.showInfoMessage(project, msg, "Avec Moi — Agent Connection")
     }

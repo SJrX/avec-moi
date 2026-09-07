@@ -74,7 +74,16 @@ class AvecMoiMcpService : Disposable {
   @Volatile
   private var activePort: Int = PORT
 
+  /** Why the last start attempt failed (e.g. the port is in use), or null if the server is running. */
+  @Volatile
+  private var startError: String? = null
+
   fun currentPort(): Int = activePort
+
+  fun isRunning(): Boolean = server != null
+
+  /** Non-null when the server isn't running because start failed (e.g. the port is already taken). */
+  fun startError(): String? = startError
 
   @Synchronized
   fun startIfNeeded() {
@@ -85,8 +94,12 @@ class AvecMoiMcpService : Disposable {
       s.start()
       server = s
       activePort = port
+      startError = null
       thisLogger().info("avec-moi MCP server listening on http://127.0.0.1:$port/mcp")
     } catch (t: Throwable) {
+      startError = "Port $port is unavailable — ${t.message ?: "already in use"}. " +
+        "Another IDE is probably already running the avec-moi server on it."
+      activePort = port
       thisLogger().warn("avec-moi: failed to start MCP server on port $port", t)
     }
   }
