@@ -6,8 +6,11 @@ package net.sjrx.intellij.plugins.avecmoi
  * project (green) beats contact with only another project (yellow), which beats no contact (red).
  * Pure, so the decision is unit-testable independent of the UI that maps it to an icon / label / help.
  */
-enum class AvecMoiConnectionState {
-  SERVER_DOWN, HERE, ELSEWHERE, NONE;
+enum class AvecMoiConnectionState(val label: String) {
+  SERVER_DOWN("not running"),
+  HERE("connected"),
+  ELSEWHERE("idle"),
+  NONE("waiting for agent");
 
   companion object {
     fun of(serverRunning: Boolean, contactedThisProject: Boolean, anyContact: Boolean): AvecMoiConnectionState =
