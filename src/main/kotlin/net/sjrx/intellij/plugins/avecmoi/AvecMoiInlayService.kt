@@ -121,18 +121,20 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val editor = inlay.editor
       val g2 = g as Graphics2D
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-      val attrs = editor.colorsScheme.getAttributes(AvecMoiColors.NOTE_INLAY)
+      val scheme = editor.colorsScheme
+      val bg = scheme.getColor(AvecMoiColors.NOTE_BACKGROUND)
+      val fg = scheme.getColor(AvecMoiColors.NOTE_FOREGROUND) ?: JBColor.GRAY
       val lines = lines()
       val lineHeight = editor.lineHeight
 
-      attrs?.backgroundColor?.let { bg ->
-        g2.color = bg
+      bg?.let {
+        g2.color = it
         g2.fillRoundRect(targetRegion.x, targetRegion.y, calcWidthInPixels(inlay), targetRegion.height, JBUI.scale(8), JBUI.scale(8))
       }
       icon.paintIcon(editor.contentComponent, g2, targetRegion.x + pad, targetRegion.y + (lineHeight - icon.iconHeight) / 2)
 
       g2.font = font(editor)
-      g2.color = if (handoff.done) UIUtil.getInactiveTextColor() else (attrs?.foregroundColor ?: JBColor.GRAY)
+      g2.color = if (handoff.done) UIUtil.getInactiveTextColor() else fg
       val ascent = g2.fontMetrics.ascent
       val textX = targetRegion.x + pad + icon.iconWidth + gap
       lines.forEachIndexed { i, line ->
