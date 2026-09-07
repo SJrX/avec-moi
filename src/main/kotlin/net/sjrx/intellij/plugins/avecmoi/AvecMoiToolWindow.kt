@@ -39,6 +39,7 @@ import com.intellij.ui.treeStructure.Tree
 import com.intellij.ui.OnePixelSplitter
 import com.intellij.ui.components.JBTextArea
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.event.MouseAdapter
@@ -467,6 +468,8 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
 
     override fun createCustomComponent(presentation: Presentation, place: String): JComponent =
       JBLabel().apply {
+        font = JBUI.Fonts.smallFont()
+        foreground = UIUtil.getContextHelpForeground()
         border = JBUI.Borders.empty(0, 8)
         cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         addMouseListener(object : MouseAdapter() {
