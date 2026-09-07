@@ -389,7 +389,9 @@ class AvecMoiMcpService : Disposable {
         "List the handoffs currently registered for a project — call after a context reset/resume " +
           "to recover state before re-registering. Returns JSON: {project, handoffs:[{handoff (the " +
           "1-based number for mark_handoff_done/update_handoff/remove_handoff), done, file, line, " +
-          "note, fileExists}]}.",
+          "note, fileExists}]}. fileExists=false is a PROBLEM: the handoff points at a file that isn't " +
+          "on disk, so the human can't act on it (a wrong path, or scaffolding you haven't written " +
+          "yet) — fix it with update_handoff, or createFileIfMissing. Don't leave it broken.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
       tool(
@@ -1042,7 +1044,9 @@ class AvecMoiMcpService : Disposable {
         rather than guessing. The ring lives in the IDE and is NOT saved across IDE restarts, so if
         list_handoffs comes back empty when you expected handoffs (the IDE restarted, or the human
         cleared them), just re-register from your plan — it's not an error. (register_handoffs
-        replaces the whole set; clear_handoffs empties it.)
+        replaces the whole set; clear_handoffs empties it.) Any handoff that comes back with
+        fileExists=false is broken — the file isn't on disk, so the human can't act on it. Treat it as
+        a warning to resolve: fix the path with update_handoff, or create the file (createFileIfMissing).
 
       All tools take a `projectPath` (the human's project directory, i.e. your cwd) so the right
       open IDE project is targeted.
