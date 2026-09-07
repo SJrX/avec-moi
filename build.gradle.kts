@@ -1,3 +1,4 @@
+import org.gradle.process.CommandLineArgumentProvider
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -123,6 +124,13 @@ intellijPlatformTesting {
       version.set("2026.2")
     }
   }
+}
+
+// Force the IDE-side plugin auto-reload property on the custom runIde262 task (belt-and-suspenders
+// vs the autoReload default not reaching a custom intellijPlatformTesting task), so a rebuild +
+// refocus hot-reloads the plugin the same way stock `runIde` does.
+tasks.named<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>("runIde262") {
+  jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Didea.auto.reload.plugins=true") })
 }
 
 // Bake version + build timestamp into a resource so the `ping` MCP tool can report them (lets an
