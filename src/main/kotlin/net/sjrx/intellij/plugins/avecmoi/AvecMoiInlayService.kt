@@ -183,42 +183,17 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     /** The note's first non-blank line, ellipsized to one editor-width line, with "…" if there's more. */
     private fun collapsedLine(inlay: Inlay<*>): String {
       val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
-      val budget = textWidthBudget(inlay.editor)
-      val first = handoff.note.split("\n").firstOrNull { it.isNotBlank() }?.trim() ?: ""
-      val hasMore = handoff.note.trim() != first // any content beyond that first line
-      if (!hasMore && fm.stringWidth(first) <= budget) return first
-      var s = first
-      while (s.isNotEmpty() && fm.stringWidth("$s…") > budget) s = s.dropLast(1)
-      return "$s…"
+      return AvecMoiNoteWrap.collapse(handoff.note, textWidthBudget(inlay.editor)) { fm.stringWidth(it) }
     }
 
     /**
      * The note split into display lines, soft-wrapped to the editor's visible width so the agent
-     * needn't hard-wrap. The note's own newlines are honored as hard breaks (paragraphs, lists);
-     * each such logical line is then word-wrapped to fit the remaining width after the icon+padding.
-     * On a wide monitor this collapses to few lines; on a narrow one it wraps instead of overflowing.
+     * needn't hard-wrap. On a wide monitor this collapses to few lines; on a narrow one it wraps
+     * instead of overflowing. (Layout logic lives in AvecMoiNoteWrap so it can be unit-tested.)
      */
     private fun wrappedLines(inlay: Inlay<*>): List<String> {
       val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
-      val budget = textWidthBudget(inlay.editor)
-      val out = ArrayList<String>()
-      // trim() drops leading/trailing blank lines (a note ending in "\n" otherwise renders empty rows);
-      // trimEnd() per line drops trailing spaces that would pad the chip.
-      for (logical in handoff.note.trim().split("\n")) {
-        val stripped = logical.trimEnd()
-        if (stripped.isBlank()) { out.add(""); continue }
-        val line = StringBuilder()
-        for (word in stripped.split(" ")) {
-          val candidate = if (line.isEmpty()) word else "$line $word"
-          if (line.isEmpty() || fm.stringWidth(candidate) <= budget) {
-            line.setLength(0); line.append(candidate)
-          } else {
-            out.add(line.toString()); line.setLength(0); line.append(word)
-          }
-        }
-        out.add(line.toString())
-      }
-      return out.ifEmpty { listOf("") }
+      return AvecMoiNoteWrap.wrap(handoff.note, textWidthBudget(inlay.editor)) { fm.stringWidth(it) }
     }
 
     /**
