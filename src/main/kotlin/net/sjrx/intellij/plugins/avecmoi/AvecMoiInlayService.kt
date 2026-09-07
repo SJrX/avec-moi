@@ -101,6 +101,13 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val renderer = NoteInlayRenderer(handoff, isCollapsed, maxCols, NoteGutterIconRenderer(handoff, isCollapsed))
       editor.inlayModel.addBlockElement(offset, false, true, 0, renderer)?.let { inlays.add(it) }
     }
+    // Inlays created before the editor is laid out measure against a stale (often too-small) width, so
+    // their height can be wrong — leaving blank space after the note until something forces a re-measure.
+    // Re-measure once on the next EDT cycle, when the viewport width is real.
+    val fresh = inlays.filter { it.editor === editor }
+    if (fresh.isNotEmpty()) ApplicationManager.getApplication().invokeLater {
+      if (!project.isDisposed) fresh.forEach { if (it.isValid) it.update() }
+    }
   }
 
   /** Fold/unfold [handoff]'s note (from its gutter chevron). Transient; just re-renders. */
