@@ -36,7 +36,7 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
   private val mcpSettings = service<AvecMoiMcpSettings>()
 
   // The familiarity table isn't DSL-bindable, so it's synced manually in onReset/onApply/onIsModified.
-  private val familiarityModel = ListTableModel<FamiliarityEntry>(SubjectColumn(), LevelColumn())
+  private val familiarityModel = ListTableModel<FamiliarityEntry>(SubjectColumn(), LevelColumn(), InterestColumn())
   private val familiarityTable = TableView(familiarityModel)
 
   override fun createPanel(): DialogPanel = panel {
@@ -85,7 +85,11 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
           }
           .createPanel()
         cell(panel).align(AlignX.FILL)
-          .label("Familiarity (self-reported — add whatever's relevant):", LabelPosition.TOP)
+          .label(
+            "Familiarity & interest (self-reported — add whatever's relevant). Interest is how much " +
+              "you want to do it yourself, not how well you know it:",
+            LabelPosition.TOP,
+          )
       }
 
       buttonsGroup("Review depth when you hit \"Step Done\":") {
@@ -141,9 +145,18 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
     override fun valueOf(item: FamiliarityEntry): Familiarity = item.level
     override fun isCellEditable(item: FamiliarityEntry): Boolean = true
     override fun setValue(item: FamiliarityEntry, value: Familiarity) { item.level = value }
-    override fun getWidth(table: JTable?): Int = 160
+    override fun getWidth(table: JTable?): Int = 150
     override fun getEditor(item: FamiliarityEntry): TableCellEditor =
       DefaultCellEditor(ComboBox(Familiarity.entries.toTypedArray()))
+  }
+
+  private class InterestColumn : ColumnInfo<FamiliarityEntry, Interest>("Interest") {
+    override fun valueOf(item: FamiliarityEntry): Interest = item.interest
+    override fun isCellEditable(item: FamiliarityEntry): Boolean = true
+    override fun setValue(item: FamiliarityEntry, value: Interest) { item.interest = value }
+    override fun getWidth(table: JTable?): Int = 150
+    override fun getEditor(item: FamiliarityEntry): TableCellEditor =
+      DefaultCellEditor(ComboBox(Interest.entries.toTypedArray()))
   }
 
   private class GuidancePreviewDialog(project: Project, private val text: String) : DialogWrapper(project) {

@@ -23,11 +23,26 @@ object AvecMoiGuidance {
     val reported = familiarity.filter { it.subject.isNotBlank() }
     if (reported.isNotEmpty()) {
       appendLine()
-      appendLine("The human's self-reported familiarity:")
-      reported.forEach { appendLine("  - ${it.subject.trim()}: ${it.level.label.lowercase()}") }
+      appendLine("The human's self-reported familiarity, and how much they want to engage:")
+      reported.forEach {
+        appendLine("  - ${it.subject.trim()}: ${it.level.label.lowercase()} (${it.interest.label.lowercase()})")
+      }
       appendLine(
-        "Calibrate to this — where they're comfortable/fluent, hand off more and explain less; " +
-          "where they're new/rusty, scaffold more and hand back the instructive, load-bearing parts.",
+        "Two axes: FAMILIARITY is how much they know; INTEREST is how much they WANT to do it " +
+          "themselves. Interest generally decides WHETHER to hand a task back; familiarity decides HOW " +
+          "MUCH to scaffold when you do.",
+      )
+      appendLine(
+        "  - Not interested: just handle it yourself, whatever their skill — don't hand it back or " +
+          "make them learn it.",
+      )
+      appendLine(
+        "  - Keen: hand off the load-bearing parts even where they're new (scaffold more so they can " +
+          "learn), and especially where they're fluent.",
+      )
+      appendLine(
+        "  - Neutral: let familiarity decide — comfortable/fluent → hand off more and explain less; " +
+          "new/rusty → scaffold more and hand back the instructive parts.",
       )
     }
 

@@ -10,8 +10,8 @@ import org.junit.Test
  */
 class AvecMoiGuidanceTest {
 
-  private fun entry(subject: String, level: Familiarity) =
-    FamiliarityEntry().also { it.subject = subject; it.level = level }
+  private fun entry(subject: String, level: Familiarity, interest: Interest = Interest.NEUTRAL) =
+    FamiliarityEntry().also { it.subject = subject; it.level = level; it.interest = interest }
 
   @Test
   fun anEmptyConfigStillStatesReviewDepthAndOmitsTheRest() {
@@ -38,6 +38,34 @@ class AvecMoiGuidanceTest {
     )
     assertTrue(brief.contains("Kotlin: rusty"))
     assertTrue(brief.contains("Spring Boot: new"))
+  }
+
+  @Test
+  fun eachRowShowsBothFamiliarityAndInterest() {
+    val brief = AvecMoiGuidance.composeBrief(
+      "",
+      listOf(
+        entry("Kotlin", Familiarity.FLUENT, Interest.KEEN),
+        entry("Regex", Familiarity.NEW, Interest.UNINTERESTED),
+      ),
+      ReviewLevel.NORMAL,
+      "",
+    )
+    assertTrue(brief, brief.contains("Kotlin: fluent (keen)"))
+    assertTrue(brief, brief.contains("Regex: new (not interested)"))
+  }
+
+  @Test
+  fun theInterestAxisIsExplainedSoLowInterestMeansJustDoIt() {
+    // The whole point of the axis: don't force a teaching moment on something they don't care about.
+    val brief = AvecMoiGuidance.composeBrief(
+      "",
+      listOf(entry("Build scripts", Familiarity.NEW, Interest.UNINTERESTED)),
+      ReviewLevel.NORMAL,
+      "",
+    )
+    assertTrue("interest must be framed as an axis: $brief", brief.contains("INTEREST"))
+    assertTrue("low interest → handle it yourself: $brief", brief.contains("just handle it yourself"))
   }
 
   @Test

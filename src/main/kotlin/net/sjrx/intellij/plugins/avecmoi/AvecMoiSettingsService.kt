@@ -31,6 +31,19 @@ enum class Familiarity(val label: String) {
   override fun toString(): String = label
 }
 
+/**
+ * How much the human WANTS to engage with a subject — orthogonal to skill. Low interest means "just
+ * do it" regardless of familiarity (they don't care to learn or own it); high means hand them the
+ * load-bearing parts even where they're new.
+ */
+enum class Interest(val label: String) {
+  KEEN("Keen"),
+  NEUTRAL("Neutral"),
+  UNINTERESTED("Not interested");
+
+  override fun toString(): String = label
+}
+
 /** How thorough the agent should be when the human hits "Step Done". */
 enum class ReviewLevel(val label: String, val guidanceLine: String) {
   LIGHT(
@@ -47,17 +60,19 @@ enum class ReviewLevel(val label: String, val guidanceLine: String) {
   ),
 }
 
-/** One row of the familiarity table: a subject and how familiar the human is with it. */
+/** One row of the familiarity table: a subject, how familiar the human is, and how much they care. */
 class FamiliarityEntry {
   var subject: String = ""
   var level: Familiarity = Familiarity.COMFORTABLE
+  var interest: Interest = Interest.NEUTRAL
 
-  fun copy(): FamiliarityEntry = FamiliarityEntry().also { it.subject = subject; it.level = level }
+  fun copy(): FamiliarityEntry =
+    FamiliarityEntry().also { it.subject = subject; it.level = level; it.interest = interest }
 
   override fun equals(other: Any?): Boolean =
-    other is FamiliarityEntry && other.subject == subject && other.level == level
+    other is FamiliarityEntry && other.subject == subject && other.level == level && other.interest == interest
 
-  override fun hashCode(): Int = subject.hashCode() * 31 + level.hashCode()
+  override fun hashCode(): Int = (subject.hashCode() * 31 + level.hashCode()) * 31 + interest.hashCode()
 }
 
 /**
