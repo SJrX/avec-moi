@@ -94,9 +94,10 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
           .createPanel()
         cell(panel).align(AlignX.FILL)
           .label(
-            "Familiarity & interest (self-reported — add whatever's relevant). Interest is how much " +
-              "you want to do it yourself, not how well you know it. Scope: 'All projects' rows are " +
-              "remembered IDE-wide; a 'This project' row of the same subject overrides them here:",
+            "Familiarity & implementation interest (self-reported — add whatever's relevant). " +
+              "Implementation interest is how much you want to write it yourself, not how well you know " +
+              "it. Scope: 'All projects' rows are remembered IDE-wide; a 'This project' row of the same " +
+              "subject overrides them here:",
             LabelPosition.TOP,
           )
       }
@@ -166,11 +167,11 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       DefaultCellEditor(ComboBox(Familiarity.entries.toTypedArray()))
   }
 
-  private class InterestColumn : ColumnInfo<FamiliarityEntry, Interest>("Interest") {
+  private class InterestColumn : ColumnInfo<FamiliarityEntry, Interest>("Implementation Interest") {
     override fun valueOf(item: FamiliarityEntry): Interest = item.interest
     override fun isCellEditable(item: FamiliarityEntry): Boolean = true
     override fun setValue(item: FamiliarityEntry, value: Interest) { item.interest = value }
-    override fun getWidth(table: JTable?): Int = 150
+    override fun getWidth(table: JTable?): Int = 180
     override fun getEditor(item: FamiliarityEntry): TableCellEditor =
       DefaultCellEditor(ComboBox(Interest.entries.toTypedArray()))
   }
