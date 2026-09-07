@@ -9,7 +9,10 @@ import com.intellij.openapi.ui.DialogPanel
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.ui.components.JBTextArea
+import com.intellij.ui.components.JBTextField
+import java.awt.datatransfer.StringSelection
 import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.LabelPosition
 import com.intellij.ui.dsl.builder.bind
@@ -36,6 +39,8 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
   private val settings = project.service<AvecMoiSettingsService>()
   private val globalSettings = service<AvecMoiGlobalSettings>()
   private val mcpSettings = service<AvecMoiMcpSettings>()
+
+  private lateinit var connectCommandField: JBTextField
 
   // The familiarity table isn't DSL-bindable, so it's synced manually in onReset/onApply/onIsModified.
   // Rows carry a scope; on apply they're partitioned into the project vs global (app-wide) stores.
@@ -74,14 +79,21 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         "One avec-moi MCP server serves all projects in this IDE. Changing the port restarts it — " +
           "re-run the connect command below with the new port afterward.",
       )
-      row {
-        button("Show connect command") { showConnectCommand() }
-        button("Regenerate auth token") { regenerateAuthToken() }
+      row("Agent connect command:") {
+        connectCommandField = textField().align(AlignX.FILL)
+          .applyToComponent { isEditable = false } // read-only but still selectable/copyable
+          .component
+        connectCommandField.text = service<AvecMoiMcpService>().connectCommand()
       }.rowComment(
-        "The server requires a secret auth token (in the connect command's Authorization header), so " +
-          "only your configured agent can drive the IDE. Regenerating it invalidates the old command — " +
-          "re-run the new one everywhere you added it.",
+        "Run this to register the server with your agent. It carries a secret auth token in the " +
+          "Authorization header, so only your configured agent can drive the IDE.",
       )
+      row {
+        button("Copy") {
+          CopyPasteManager.getInstance().setContents(StringSelection(service<AvecMoiMcpService>().connectCommand()))
+        }
+        button("Regenerate auth token") { regenerateAuthToken() }
+      }.rowComment("Regenerating the token invalidates the old command — re-run the new one everywhere you added it.")
     }
 
     group("Agent Guidance") {
@@ -126,7 +138,10 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       }
     }
 
-    onReset { familiarityModel.items = scopedRows() }
+    onReset {
+      familiarityModel.items = scopedRows()
+      connectCommandField.text = service<AvecMoiMcpService>().connectCommand() // reflect the current port/token
+    }
     onIsModified {
       // Compare per-scope (filter preserves order), so it's robust to how rows are interleaved.
       familiarityModel.items.filter { it.scope == FamiliarityScope.GLOBAL } != globalSettings.familiarity ||
@@ -160,17 +175,6 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
     GuidancePreviewDialog(project, text).show()
   }
 
-  private fun showConnectCommand() {
-    GuidancePreviewDialog(
-      project,
-      "Run this to register the avec-moi server with your agent — it includes the auth token, so " +
-        "copy the whole line:\n\n${service<AvecMoiMcpService>().connectCommand()}\n\n" +
-        "Then start (or restart) your agent session.",
-      dialogTitle = "Avec Moi — Connect Command",
-      size = Dimension(780, 320),
-    ).show()
-  }
-
   private fun regenerateAuthToken() {
     val confirm = Messages.showYesNoDialog(
       project,
@@ -181,7 +185,7 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
     )
     if (confirm != Messages.YES) return
     mcpSettings.regenerateToken()
-    showConnectCommand()
+    connectCommandField.text = service<AvecMoiMcpService>().connectCommand()
   }
 
   private class SubjectColumn : ColumnInfo<FamiliarityEntry, String>("Subject") {
@@ -217,14 +221,9 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       DefaultCellEditor(ComboBox(FamiliarityScope.entries.toTypedArray()))
   }
 
-  private class GuidancePreviewDialog(
-    project: Project,
-    private val text: String,
-    dialogTitle: String = "Avec Moi — Effective Guidance",
-    private val size: Dimension = Dimension(700, 520),
-  ) : DialogWrapper(project) {
+  private class GuidancePreviewDialog(project: Project, private val text: String) : DialogWrapper(project) {
     init {
-      title = dialogTitle
+      title = "Avec Moi — Effective Guidance"
       init()
     }
 
@@ -235,10 +234,7 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         wrapStyleWord = true
         caretPosition = 0
       }
-      return JBScrollPane(area).apply {
-        preferredSize = size
-        minimumSize = size // short content otherwise lets the dialog collapse below the preferred size
-      }
+      return JBScrollPane(area).apply { preferredSize = Dimension(700, 520) }
     }
 
     override fun createActions(): Array<Action> = arrayOf(okAction)
