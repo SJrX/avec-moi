@@ -553,13 +553,22 @@ class AvecMoiMcpService : Disposable {
   private fun unresolvedFiles(project: Project, files: List<String>): List<String> =
     runReadActionBlocking { files.distinct().filter { AvecMoiNavigation.resolveFile(project, it) == null } }
 
+  /** The subset of [files] that didn't exist and were just created (as passed) — for reporting back. */
+  private fun createMissingFiles(project: Project, files: List<String>): List<String> =
+    files.distinct().filter { ensureFileExists(project, it) }
+
+  /** Note appended to a tool reply when files were created, so it isn't a silent side effect. */
+  private fun createdFilesNote(created: List<String>): String =
+    "\n\nCreated ${created.size} new empty file(s): ${created.joinToString(", ")}."
+
   /**
    * Create [file] (and any missing parent dirs) if it doesn't exist yet, so a handoff can point at
-   * scaffolding the human will fill in. Returns true if the file exists afterwards. Empty file — the
-   * agent is expected to have written stubs, or the human will. Runs a write action on the EDT.
+   * scaffolding the human will fill in. Returns true only if it CREATED the file this call (false if
+   * it already existed, or creation failed). Empty file — the agent is expected to have written stubs,
+   * or the human will. Runs a write action on the EDT.
    */
   private fun ensureFileExists(project: Project, file: String): Boolean {
-    if (AvecMoiNavigation.resolveFile(project, file) != null) return true
+    if (AvecMoiNavigation.resolveFile(project, file) != null) return false // already there — not created
     val base = project.basePath ?: return false
     val path = if (FileUtil.isAbsolute(file)) file else "$base/$file"
     val parent = File(path).parent ?: return false
@@ -605,12 +614,13 @@ class AvecMoiMcpService : Disposable {
       AvecMoiRingService.HandoffSpec(file, line, note)
     }
     // Create files up front (if asked) BEFORE set(), so the markers anchor to real documents.
-    if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
-      list.forEach { ensureFileExists(project, it.file) }
-    }
+    val created = if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
+      createMissingFiles(project, list.map { it.file })
+    } else emptyList()
     project.service<AvecMoiRingService>().set(list)
     val base = "Registered ${list.size} handoff(s) for project '${project.name}'. " +
-      "The human can now step through them in the IDE."
+      "The human can now step through them in the IDE." +
+      (if (created.isNotEmpty()) createdFilesNote(created) else "")
     val missing = unresolvedFiles(project, list.map { it.file })
     return if (missing.isEmpty()) textContent(base, isError = false)
     else textContent(base + missingFilesWarning(project, missing), isError = true)
@@ -626,9 +636,12 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("Missing 'note'.", isError = true)
     val line = args?.get("line")?.jsonPrimitive?.intOrNull ?: 1
     val at = args?.get("position")?.jsonPrimitive?.intOrNull?.let { it - 1 } // 1-based -> 0-based; null appends
-    if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) ensureFileExists(project, file)
+    val created = if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
+      createMissingFiles(project, listOf(file))
+    } else emptyList()
     val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note), at)
-    val base = "Added handoff #$n in '${project.name}'."
+    val base = "Added handoff #$n in '${project.name}'." +
+      (if (created.isNotEmpty()) createdFilesNote(created) else "")
     val missing = unresolvedFiles(project, listOf(file))
     return if (missing.isEmpty()) textContent(base, isError = false)
     else textContent(base + missingFilesWarning(project, missing), isError = true)
@@ -646,11 +659,12 @@ class AvecMoiMcpService : Disposable {
     if (note == null && file == null && line == null) {
       return textContent("Nothing to update — pass at least one of note, file, line.", isError = true)
     }
-    if (file != null && args["createFileIfMissing"]?.jsonPrimitive?.booleanOrNull == true) {
-      ensureFileExists(project, file)
-    }
+    val created = if (file != null && args["createFileIfMissing"]?.jsonPrimitive?.booleanOrNull == true) {
+      createMissingFiles(project, listOf(file))
+    } else emptyList()
     return if (project.service<AvecMoiRingService>().update(n - 1, note, file, line)) {
-      val base = "Updated handoff #$n in '${project.name}'."
+      val base = "Updated handoff #$n in '${project.name}'." +
+        (if (created.isNotEmpty()) createdFilesNote(created) else "")
       val missing = if (file != null) unresolvedFiles(project, listOf(file)) else emptyList()
       if (missing.isEmpty()) textContent(base, isError = false)
       else textContent(base + missingFilesWarning(project, missing), isError = true)
