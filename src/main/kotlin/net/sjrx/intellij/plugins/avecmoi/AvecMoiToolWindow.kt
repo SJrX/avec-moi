@@ -13,7 +13,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
@@ -277,7 +277,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
 
   /** Navigate to a handoff, reading its (marker-tracked) line under a read action. */
   private fun navigate(handoff: AvecMoiRingService.Handoff) {
-    val line = ReadAction.compute<Int, RuntimeException> { handoff.line }
+    val line = runReadActionBlocking { handoff.line }
     AvecMoiNavigation.openAt(project, handoff.file, line)
   }
 
@@ -340,7 +340,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
         }
         is AvecMoiRingService.Handoff -> {
           val order = ((node.parent as? DefaultMutableTreeNode)?.getIndex(node) ?: 0) + 1
-          val iconAndLine = ReadAction.compute<Pair<Icon, Int>, RuntimeException> { fileIconFor(obj.file) to obj.line }
+          val iconAndLine = runReadActionBlocking { fileIconFor(obj.file) to obj.line }
           icon = if (obj.done) LayeredIcon(iconAndLine.first, AllIcons.Nodes.DoneMark) else iconAndLine.first
           append("$order. ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
           append(obj.file.substringAfterLast('/'), if (obj.done) doneAttr else SimpleTextAttributes.REGULAR_ATTRIBUTES)

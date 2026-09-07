@@ -1,7 +1,7 @@
 package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.openapi.Disposable
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
@@ -281,7 +281,7 @@ class AvecMoiRingService(private val project: Project) :
   // --- helpers ----------------------------------------------------------------------------------
 
   private fun buildHandoffs(specs: List<HandoffSpec>): List<Handoff> =
-    ReadAction.compute<List<Handoff>, RuntimeException> {
+    runReadActionBlocking {
       specs.map { spec -> Handoff(spec.file, spec.note, createMarker(spec.file, spec.line), spec.line) }
     }
 
@@ -333,7 +333,7 @@ class AvecMoiRingService(private val project: Project) :
         for (h in s.handoffs) {
           val hs = HandoffState()
           hs.file = h.file
-          hs.line = ReadAction.compute<Int, RuntimeException> { h.line }
+          hs.line = runReadActionBlocking { h.line }
           hs.note = h.note
           hs.done = h.done
           ss.handoffs.add(hs)
@@ -368,7 +368,7 @@ class AvecMoiRingService(private val project: Project) :
     synchronized(this) {
       for (s in sessions) for (h in s.handoffs) {
         if (h.marker?.isValid != true) {
-          h.marker = ReadAction.compute<RangeMarker?, RuntimeException> { createMarker(h.file, h.line) }
+          h.marker = runReadActionBlocking { createMarker(h.file, h.line) }
         }
       }
     }

@@ -3,7 +3,7 @@ package net.sjrx.intellij.plugins.avecmoi
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
@@ -31,7 +31,7 @@ abstract class HandoffNavAction(private val forward: Boolean) : AnAction() {
     val ring = project.service<AvecMoiRingService>()
     val handoff = (if (forward) ring.next() else ring.prev()) ?: return
 
-    val line = ReadAction.compute<Int, RuntimeException> { handoff.line }
+    val line = runReadActionBlocking { handoff.line }
     if (!AvecMoiNavigation.openAt(project, handoff.file, line)) {
       thisLogger().warn("avec-moi: handoff file not found: ${handoff.file}")
       return

@@ -4,7 +4,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -58,8 +58,8 @@ class DoThisStepAction : AnAction() {
       }
     }
     val ring = project.service<AvecMoiRingService>()
-    return ReadAction.compute<String?, RuntimeException> {
-      val handoff = ring.all().getOrNull(ring.cursorIndex()) ?: return@compute null
+    return runReadActionBlocking {
+      val handoff = ring.all().getOrNull(ring.cursorIndex()) ?: return@runReadActionBlocking null
       stepMessage(handoff.file, handoff.line, handoff.line, handoff.note)
     }
   }

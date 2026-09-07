@@ -2,7 +2,7 @@ package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -581,7 +581,7 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val ring = project.service<AvecMoiRingService>()
     // reading .line touches the marker's document, so compute under a read lock (we're off the EDT).
-    val text = ReadAction.compute<String, RuntimeException> {
+    val text = runReadActionBlocking {
       ring.all().mapIndexed { i, h ->
         val mark = if (h.done) "[done]" else "[todo]"
         "${i + 1}. $mark ${h.note}  (${h.file}:${h.line})"
