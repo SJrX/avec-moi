@@ -27,7 +27,7 @@ class AskForHintAction : AnAction() {
     val project = e.project
     // Needs an agent, an active session (the loop is running), and an editor to point the hint at.
     e.presentation.isEnabled = project != null &&
-      project.service<AvecMoiTerminalService>().tabs().isNotEmpty() &&
+      project.service<AvecMoiTerminalService>().tabNames().isNotEmpty() &&
       project.service<AvecMoiRingService>().activeId() != null &&
       FileEditorManager.getInstance(project).selectedTextEditor != null
   }

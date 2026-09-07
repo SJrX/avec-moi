@@ -25,7 +25,7 @@ class StepDoneAction : AnAction() {
     // Enabled only when there's an agent to signal AND an active session (the loop is running) —
     // with no session there's no "step" to be done.
     e.presentation.isEnabled = project != null &&
-      project.service<AvecMoiTerminalService>().tabs().isNotEmpty() &&
+      project.service<AvecMoiTerminalService>().tabNames().isNotEmpty() &&
       project.service<AvecMoiRingService>().activeId() != null
   }
 

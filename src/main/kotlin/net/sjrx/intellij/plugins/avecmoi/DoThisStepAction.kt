@@ -29,7 +29,7 @@ class DoThisStepAction : AnAction() {
     // Needs an agent, an active session (the loop is running), and a target (selection or the
     // handoff you're parked on) to hand back.
     e.presentation.isEnabled = project != null &&
-      project.service<AvecMoiTerminalService>().tabs().isNotEmpty() &&
+      project.service<AvecMoiTerminalService>().tabNames().isNotEmpty() &&
       project.service<AvecMoiRingService>().activeId() != null &&
       referentMessage(project) != null
   }

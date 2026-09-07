@@ -555,15 +555,14 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
     override fun update(e: AnActionEvent) {
       val svc = project.service<AvecMoiTerminalService>()
-      e.presentation.isEnabled = svc.tabs().isNotEmpty()
+      e.presentation.isEnabled = svc.tabNames().isNotEmpty()
       e.presentation.text = "Terminal: " + (svc.targetName() ?: "none")
     }
 
     override fun createPopupActionGroup(button: JComponent): DefaultActionGroup {
       val svc = project.service<AvecMoiTerminalService>()
       return DefaultActionGroup().apply {
-        for (tab in svc.tabs()) {
-          val name = tab.content.displayName ?: "Terminal"
+        for (name in svc.tabNames()) {
           add(object : AnAction(name), DumbAware {
             override fun actionPerformed(e: AnActionEvent) = svc.setPreferred(name)
           })
