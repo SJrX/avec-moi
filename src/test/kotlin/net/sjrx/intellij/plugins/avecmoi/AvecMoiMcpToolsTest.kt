@@ -26,7 +26,7 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     // language=JSON
     val result = callTool("resolve_project", """{ "projectPath": "$projectPath" }""")
     assertTrue("routing should match the fixture project, was: ${result.contentText()}",
-      result.contentText().contains("Matched project"))
+      result.contentText().contains("\"matched\":true"))
   }
 
   fun testListProjectsIncludesTheOpenFixtureProject() {
@@ -80,13 +80,13 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
       """{ "file": "B.kt", "note": "implement B" }""",
     )
 
-    // Verification — the service holds them, and list_handoffs renders them back
+    // Verification — the service holds them, and list_handoffs renders them back (as JSON)
     assertEquals(2, ring.all().size)
     val text = callTool("list_handoffs", """{ "projectPath": "$projectPath" }""").contentText()
-    assertTrue(text.contains("implement A"))
-    assertTrue(text.contains("A.kt:3"))
-    assertTrue(text.contains("implement B"))
-    assertTrue(text.contains("B.kt:1")) // line defaults to 1 when omitted
+    assertTrue(text, text.contains("\"note\":\"implement A\""))
+    assertTrue(text, text.contains("\"file\":\"A.kt\"") && text.contains("\"line\":3"))
+    assertTrue(text, text.contains("\"note\":\"implement B\""))
+    assertTrue(text, text.contains("\"file\":\"B.kt\"") && text.contains("\"line\":1")) // line defaults to 1
   }
 
   fun testRegisterSilentlyDropsHandoffEntriesMissingAFile() {
@@ -154,13 +154,13 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     register("""{ "file": "ghost/missing.kt", "note": "implement me" }""")
     // Exercise SUT
     val text = callTool("list_handoffs", """{ "projectPath": "$projectPath" }""").contentText()
-    // Verification — the agent (and human) can see from the listing that the file is missing
-    assertTrue("list_handoffs should flag the missing file: $text", text.contains("FILE NOT FOUND"))
+    // Verification — the agent can see from the listing that the file is missing (fileExists:false)
+    assertTrue("list_handoffs should flag the missing file: $text", text.contains("\"fileExists\":false"))
   }
 
   fun testListHandoffsOnAnEmptyProjectSaysSo() {
     val text = callTool("list_handoffs", """{ "projectPath": "$projectPath" }""").contentText()
-    assertTrue(text.contains("No handoffs"))
+    assertTrue("empty project should list no handoffs: $text", text.contains("\"handoffs\":[]"))
   }
 
   fun testRegisterReplacesAnyPreviousHandoffs() {
@@ -221,7 +221,7 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     assertFalse("row #1 must stay todo", ring.all()[0].done)
     assertTrue("row #2 must be done", ring.all()[1].done)
     assertTrue(callTool("list_handoffs", """{ "projectPath": "$projectPath" }""").contentText()
-      .contains("[done]"))
+      .contains("\"done\":true"))
   }
 
   fun testUpdateHandoffEditsInPlacePreservingDoneAndPosition() {
@@ -305,8 +305,8 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     callTool("create_session", """{ "projectPath": "$projectPath", "name": "Feature X" }""")
     // Verification
     val text = callTool("list_sessions", """{ "projectPath": "$projectPath" }""").contentText()
-    assertTrue(text.contains("[ACTIVE]"))
-    assertTrue(text.contains("Feature X"))
+    assertTrue(text, text.contains("\"state\":\"active\""))
+    assertTrue(text, text.contains("\"name\":\"Feature X\""))
   }
 
   fun testSwitchSessionRoutesHandoffToolsToTheChosenSession() {
@@ -354,6 +354,6 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     // Verification
     assertFalse(result.isError())
     assertTrue(callTool("list_sessions", """{ "projectPath": "$projectPath" }""").contentText()
-      .contains("[historical]"))
+      .contains("\"state\":\"historical\""))
   }
 }

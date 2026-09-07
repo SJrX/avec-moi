@@ -23,6 +23,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
@@ -239,10 +240,15 @@ class AvecMoiMcpService : Disposable {
   private fun toolsListResult(): JsonObject = buildJsonObject {
     putJsonArray("tools") {
       tool("ping", "Health check for the avec-moi MCP server. Returns pong.")
-      tool("list_projects", "List the IntelliJ projects currently open in this IDE, by directory.")
+      tool(
+        "list_projects",
+        "List the IntelliJ projects currently open in this IDE, by directory. Returns JSON: " +
+          "{projects:[{name, basePath}]}.",
+      )
       tool(
         "resolve_project",
-        "Given a working directory, report which open IntelliJ project it belongs to.",
+        "Given a working directory, report which open IntelliJ project it belongs to. Returns JSON: " +
+          "{matched, name, basePath} (or {matched:false, triedPath}).",
         requiredString("projectPath", "Absolute path to a directory inside the project (e.g. your cwd)."),
       )
       tool(
@@ -374,13 +380,16 @@ class AvecMoiMcpService : Disposable {
       tool(
         "get_editor_context",
         "Report where the human's cursor is (file, line, column) and any selected text in the active " +
-          "editor — e.g. to see what they're looking at when they ask for help.",
+          "editor — e.g. to see what they're looking at when they ask for help. Returns JSON: " +
+          "{activeEditor, file, caret:{line, column}, selection:{startLine, endLine, text}|null}.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
       tool(
         "list_handoffs",
         "List the handoffs currently registered for a project — call after a context reset/resume " +
-          "to recover state before re-registering.",
+          "to recover state before re-registering. Returns JSON: {project, handoffs:[{handoff (the " +
+          "1-based number for mark_handoff_done/update_handoff/remove_handoff), done, file, line, " +
+          "note, fileExists}]}.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
       tool(
@@ -431,7 +440,9 @@ class AvecMoiMcpService : Disposable {
       )
       tool(
         "list_sessions",
-        "List this project's sessions (active / open / historical) with names, branch, and progress.",
+        "List this project's sessions (active / open / historical) with names, branch, and progress. " +
+          "Returns JSON: {project, sessions:[{id (for switch/rename/complete_session), name, state, " +
+          "branch, handoffs, done}]}.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
       tool(
@@ -462,12 +473,19 @@ class AvecMoiMcpService : Disposable {
     val args = params?.get("arguments")?.jsonObject
     return when (name) {
       "ping" -> textContent(pingText(), isError = false)
-      "list_projects" -> textContent(listProjectsText(), isError = false)
+      "list_projects" -> jsonContent(listProjectsJson())
       "resolve_project" -> {
         val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
         val proj = resolveProject(path)
-        if (proj == null) textContent("No open project matches path: $path", isError = false)
-        else textContent("Matched project '${proj.name}' at ${proj.basePath}", isError = false)
+        jsonContent(buildJsonObject {
+          put("matched", proj != null)
+          if (proj != null) {
+            put("name", proj.name)
+            put("basePath", proj.basePath)
+          } else {
+            put("triedPath", path)
+          }
+        })
       }
       "get_avecmoi_guidance" -> getGuidance(args)
       "register_handoffs" -> registerHandoffs(args)
@@ -496,10 +514,15 @@ class AvecMoiMcpService : Disposable {
     append("tools (${TOOL_NAMES.size}): ${TOOL_NAMES.joinToString(", ")}")
   }
 
-  private fun listProjectsText(): String {
-    val projects = ProjectManager.getInstance().openProjects
-    if (projects.isEmpty()) return "No IntelliJ projects are currently open."
-    return projects.joinToString("\n") { p -> "- ${p.name}: ${p.basePath ?: "(no base path)"}" }
+  private fun listProjectsJson(): JsonElement = buildJsonObject {
+    putJsonArray("projects") {
+      ProjectManager.getInstance().openProjects.forEach { p ->
+        addJsonObject {
+          put("name", p.name)
+          put("basePath", p.basePath)
+        }
+      }
+    }
   }
 
   /** Match a directory (e.g. the agent's cwd) to the open project whose base dir contains it; deepest wins. */
@@ -651,24 +674,32 @@ class AvecMoiMcpService : Disposable {
     val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
     val project = resolveProject(path)
       ?: return textContent("No open project matches path: $path", isError = true)
-    var result = "No active editor in '${project.name}'."
+    var result: JsonElement = buildJsonObject { put("activeEditor", false) }
     ApplicationManager.getApplication().invokeAndWait {
       val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@invokeAndWait
       val doc = editor.document
-      val file = FileDocumentManager.getInstance().getFile(doc)?.path ?: "(unknown file)"
+      val filePath = FileDocumentManager.getInstance().getFile(doc)?.path
       val caret = editor.caretModel.logicalPosition
-      val sb = StringBuilder("File: $file\nCursor: line ${caret.line + 1}, column ${caret.column + 1}")
       val sel = editor.selectionModel
-      if (sel.hasSelection()) {
-        val startLine = doc.getLineNumber(sel.selectionStart) + 1
-        val endLine = doc.getLineNumber(sel.selectionEnd) + 1
-        sb.append("\nSelection (lines $startLine-$endLine):\n${sel.selectedText}")
-      } else {
-        sb.append("\nNo selection.")
+      result = buildJsonObject {
+        put("activeEditor", true)
+        put("file", filePath)
+        putJsonObject("caret") {
+          put("line", caret.line + 1)
+          put("column", caret.column + 1)
+        }
+        if (sel.hasSelection()) {
+          putJsonObject("selection") {
+            put("startLine", doc.getLineNumber(sel.selectionStart) + 1)
+            put("endLine", doc.getLineNumber(sel.selectionEnd) + 1)
+            put("text", sel.selectedText)
+          }
+        } else {
+          put("selection", null as String?)
+        }
       }
-      result = sb.toString()
     }
-    return textContent(result, isError = false)
+    return jsonContent(result)
   }
 
   private fun listHandoffs(args: JsonObject?): JsonObject {
@@ -677,18 +708,23 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val ring = project.service<AvecMoiRingService>()
     // reading .line touches the marker's document, so compute under a read lock (we're off the EDT).
-    val text = runReadActionBlocking {
-      ring.all().mapIndexed { i, h ->
-        val mark = if (h.done) "[done]" else "[todo]"
-        val missing = if (AvecMoiNavigation.resolveFile(project, h.file) == null) "  ⚠ FILE NOT FOUND" else ""
-        "${i + 1}. $mark ${h.note}  (${h.file}:${h.line})$missing"
-      }.joinToString("\n")
-    }
-    return if (text.isBlank()) {
-      textContent("No handoffs registered for project '${project.name}'.", isError = false)
-    } else {
-      textContent("Handoffs for '${project.name}':\n$text", isError = false)
-    }
+    return jsonContent(runReadActionBlocking {
+      buildJsonObject {
+        put("project", project.name)
+        putJsonArray("handoffs") {
+          ring.all().forEachIndexed { i, h ->
+            addJsonObject {
+              put("handoff", i + 1) // 1-based, as passed to mark_handoff_done / update_handoff / remove_handoff
+              put("done", h.done)
+              put("file", h.file)
+              put("line", h.line)
+              put("note", h.note)
+              put("fileExists", AvecMoiNavigation.resolveFile(project, h.file) != null)
+            }
+          }
+        }
+      }
+    })
   }
 
   private fun clearHandoffs(args: JsonObject?): JsonObject {
@@ -749,18 +785,28 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val ring = project.service<AvecMoiRingService>()
     val active = ring.activeId()
-    val sessions = ring.listSessions()
-    if (sessions.isEmpty()) return textContent("No sessions yet in '${project.name}'.", isError = false)
-    val text = sessions.joinToString("\n") { s ->
-      val tag = when {
-        s.historical -> "historical"
-        s.id == active -> "ACTIVE"
-        else -> "open"
+    return jsonContent(buildJsonObject {
+      put("project", project.name)
+      putJsonArray("sessions") {
+        ring.listSessions().forEach { s ->
+          addJsonObject {
+            put("id", s.id) // pass to switch_session / rename_session / complete_session
+            put("name", s.name)
+            put(
+              "state",
+              when {
+                s.historical -> "historical"
+                s.id == active -> "active"
+                else -> "open"
+              },
+            )
+            put("branch", s.branch)
+            put("handoffs", s.handoffs.size)
+            put("done", s.handoffs.count { it.done })
+          }
+        }
       }
-      val done = s.handoffs.count { it.done }
-      "[$tag] ${s.id}: ${s.name}${s.branch?.let { " (branch $it)" } ?: ""} — $done/${s.handoffs.size} handoffs done"
-    }
-    return textContent(text, isError = false)
+    })
   }
 
   private fun switchSession(args: JsonObject?): JsonObject {
@@ -837,6 +883,14 @@ class AvecMoiMcpService : Disposable {
       put("type", "string")
       put("description", description)
     }
+
+  /**
+   * A tool result whose payload is JSON (delivered as text — a single representation, not duplicated
+   * into structuredContent, to avoid paying for the same data twice in the model's context). Used for
+   * the read/list tools whose fields the agent reuses precisely (numbers it feeds back, booleans it
+   * branches on); confirmations and prose stay plain text.
+   */
+  private fun jsonContent(payload: JsonElement): JsonObject = textContent(payload.toString(), isError = false)
 
   private fun textContent(text: String, isError: Boolean): JsonObject = buildJsonObject {
     putJsonArray("content") {

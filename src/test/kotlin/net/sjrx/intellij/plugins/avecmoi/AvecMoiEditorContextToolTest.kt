@@ -14,27 +14,27 @@ class AvecMoiEditorContextToolTest : AbstractAvecMoiTest() {
     // Fixture Setup — the platform's <caret> marker places the caret at the start of the 2nd line
     myFixture.configureByText("Sample.kt", "line one\n<caret>line two\nline three\n")
 
-    // Verification
+    // Verification — JSON caret at line 2, column 1, and no selection
     val context = editorContext()
-    assertTrue("expected line 2 in: $context", context.contains("line 2"))
-    assertTrue("expected column 1 in: $context", context.contains("column 1"))
-    assertTrue(context.contains("No selection"))
+    assertTrue("expected caret line 2 in: $context", context.contains("\"line\":2"))
+    assertTrue("expected caret column 1 in: $context", context.contains("\"column\":1"))
+    assertTrue("expected null selection in: $context", context.contains("\"selection\":null"))
   }
 
   fun testReportsNoActiveEditorWhenNothingIsOpen() {
     // Fixture Setup — no file configured, so there's no selected editor
 
-    // Verification — a clean message, not an error or a crash
-    assertTrue(editorContext().contains("No active editor"))
+    // Verification — a clean JSON flag, not an error or a crash
+    assertTrue(editorContext().contains("\"activeEditor\":false"))
   }
 
   fun testReportsTheSelectedTextAndItsLineRange() {
     // Fixture Setup — the platform's <selection>…</selection> markers select the whole 2nd line
     myFixture.configureByText("Sample.kt", "line one\n<selection>line two</selection>\nline three\n")
 
-    // Verification
+    // Verification — JSON selection block carrying the selected text
     val context = editorContext()
-    assertTrue("expected a selection block in: $context", context.contains("Selection"))
+    assertTrue("expected a selection block in: $context", context.contains("\"selection\":{"))
     assertTrue("expected the selected text in: $context", context.contains("line two"))
   }
 }
