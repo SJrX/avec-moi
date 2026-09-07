@@ -149,6 +149,15 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     assertEquals("still/missing.kt", ring.all()[0].file)
   }
 
+  fun testListHandoffsFlagsAnUnresolvableFile() {
+    // Fixture Setup — a path that won't resolve on disk (like the monorepo mistake)
+    register("""{ "file": "ghost/missing.kt", "note": "implement me" }""")
+    // Exercise SUT
+    val text = callTool("list_handoffs", """{ "projectPath": "$projectPath" }""").contentText()
+    // Verification — the agent (and human) can see from the listing that the file is missing
+    assertTrue("list_handoffs should flag the missing file: $text", text.contains("FILE NOT FOUND"))
+  }
+
   fun testListHandoffsOnAnEmptyProjectSaysSo() {
     val text = callTool("list_handoffs", """{ "projectPath": "$projectPath" }""").contentText()
     assertTrue(text.contains("No handoffs"))

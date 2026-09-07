@@ -69,6 +69,22 @@ class AvecMoiMcpProtocolTest : AbstractAvecMoiTest() {
     }
   }
 
+  fun testCreateFileIfMissingIsAdvertisedButOptional() {
+    // Exercise SUT
+    val tools = call("tools/list")["tools"]!!.jsonArray
+
+    // Verification — register_handoffs advertises createFileIfMissing so the agent knows it exists,
+    // but it must NOT be required (else every register_handoffs call would have to pass it — the
+    // tool() helper marks all props required by default, which this guards against regressing).
+    val register = tools.first { it.jsonObject["name"]!!.jsonPrimitive.content == "register_handoffs" }.jsonObject
+    val schema = register["inputSchema"]!!.jsonObject
+    assertNotNull("register_handoffs should advertise createFileIfMissing",
+      schema["properties"]!!.jsonObject["createFileIfMissing"])
+    val required = schema["required"]!!.jsonArray.map { it.jsonPrimitive.content }
+    assertFalse("createFileIfMissing must be optional", "createFileIfMissing" in required)
+    assertTrue("handoffs must still be required", "handoffs" in required)
+  }
+
   fun testPingToolReturnsPong() {
     // Exercise SUT
     // language=JSON

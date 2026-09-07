@@ -2,7 +2,12 @@ package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.application.runReadActionBlocking
+import com.intellij.openapi.util.io.FileUtil
+import com.intellij.openapi.vfs.VfsUtil
+import java.io.File
+import java.io.IOException
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -277,6 +282,15 @@ class AvecMoiMcpService : Disposable {
             putJsonArray("required") { add("file"); add("note") }
           }
         },
+        "createFileIfMissing" to buildJsonObject {
+          put("type", "boolean")
+          put(
+            "description",
+            "If true, create any handoff file (and parent dirs) that doesn't exist on disk yet, so you " +
+              "can point at scaffolding before you've written it. Creates an empty file. Default false.",
+          )
+        },
+        optional = setOf("createFileIfMissing"),
       )
       addJsonObject {
         put("name", "add_handoff")
@@ -302,6 +316,10 @@ class AvecMoiMcpService : Disposable {
             }
             putJsonObject("position") {
               put("type", "integer"); put("description", "1-based position to insert at; default appends to the end.")
+            }
+            putJsonObject("createFileIfMissing") {
+              put("type", "boolean")
+              put("description", "If true, create the file (and parent dirs) if it doesn't exist. Default false.")
             }
           }
           putJsonArray("required") { add("projectPath"); add("file"); add("note") }
@@ -334,6 +352,10 @@ class AvecMoiMcpService : Disposable {
               put("type", "string"); put("description", "New file path (absolute, or relative to the project root).")
             }
             putJsonObject("line") { put("type", "integer"); put("description", "New 1-based line.") }
+            putJsonObject("createFileIfMissing") {
+              put("type", "boolean")
+              put("description", "If true and 'file' is given, create it (and parent dirs) if missing. Default false.")
+            }
           }
           putJsonArray("required") { add("projectPath"); add("handoff") }
         }
@@ -505,6 +527,33 @@ class AvecMoiMcpService : Disposable {
   private fun unresolvedFiles(project: Project, files: List<String>): List<String> =
     runReadActionBlocking { files.distinct().filter { AvecMoiNavigation.resolveFile(project, it) == null } }
 
+  /**
+   * Create [file] (and any missing parent dirs) if it doesn't exist yet, so a handoff can point at
+   * scaffolding the human will fill in. Returns true if the file exists afterwards. Empty file — the
+   * agent is expected to have written stubs, or the human will. Runs a write action on the EDT.
+   */
+  private fun ensureFileExists(project: Project, file: String): Boolean {
+    if (AvecMoiNavigation.resolveFile(project, file) != null) return true
+    val base = project.basePath ?: return false
+    val path = if (FileUtil.isAbsolute(file)) file else "$base/$file"
+    val parent = File(path).parent ?: return false
+    val name = File(path).name
+    if (name.isBlank()) return false
+    var ok = false
+    ApplicationManager.getApplication().invokeAndWait {
+      WriteAction.run<RuntimeException> {
+        try {
+          val dir = VfsUtil.createDirectories(parent)
+          if (dir.findChild(name) == null) dir.createChildData(this, name)
+          ok = true
+        } catch (_: IOException) {
+          ok = false
+        }
+      }
+    }
+    return ok
+  }
+
   /** Shared guidance appended to the tool reply when some handoff files can't be found. */
   private fun missingFilesWarning(project: Project, missing: List<String>): String =
     "\n\nWARNING: ${missing.size} of these point to files that don't exist under the project root " +
@@ -513,7 +562,8 @@ class AvecMoiMcpService : Disposable {
       "\n\nHandoff paths must be absolute, or relative to the PROJECT ROOT above — not to a " +
       "subdirectory or the agent's cwd. In a multi-project repo this usually means a missing " +
       "subdirectory prefix. Find the real paths (they're stored as-is, so the human sees the same " +
-      "broken links) and fix them with update_handoff, or re-run register_handoffs."
+      "broken links) and fix them with update_handoff, or re-run register_handoffs. If the path IS " +
+      "right and the file just doesn't exist yet, pass createFileIfMissing=true to create it."
 
   private fun registerHandoffs(args: JsonObject?): JsonObject {
     val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
@@ -527,6 +577,10 @@ class AvecMoiMcpService : Disposable {
       val line = o["line"]?.jsonPrimitive?.intOrNull ?: 1
       val note = o["note"]?.jsonPrimitive?.contentOrNull ?: ""
       AvecMoiRingService.HandoffSpec(file, line, note)
+    }
+    // Create files up front (if asked) BEFORE set(), so the markers anchor to real documents.
+    if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
+      list.forEach { ensureFileExists(project, it.file) }
     }
     project.service<AvecMoiRingService>().set(list)
     val base = "Registered ${list.size} handoff(s) for project '${project.name}'. " +
@@ -546,6 +600,7 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("Missing 'note'.", isError = true)
     val line = args?.get("line")?.jsonPrimitive?.intOrNull ?: 1
     val at = args?.get("position")?.jsonPrimitive?.intOrNull?.let { it - 1 } // 1-based -> 0-based; null appends
+    if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) ensureFileExists(project, file)
     val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note), at)
     val base = "Added handoff #$n in '${project.name}'."
     val missing = unresolvedFiles(project, listOf(file))
@@ -564,6 +619,9 @@ class AvecMoiMcpService : Disposable {
     val line = args["line"]?.jsonPrimitive?.intOrNull
     if (note == null && file == null && line == null) {
       return textContent("Nothing to update — pass at least one of note, file, line.", isError = true)
+    }
+    if (file != null && args["createFileIfMissing"]?.jsonPrimitive?.booleanOrNull == true) {
+      ensureFileExists(project, file)
     }
     return if (project.service<AvecMoiRingService>().update(n - 1, note, file, line)) {
       val base = "Updated handoff #$n in '${project.name}'."
@@ -622,7 +680,8 @@ class AvecMoiMcpService : Disposable {
     val text = runReadActionBlocking {
       ring.all().mapIndexed { i, h ->
         val mark = if (h.done) "[done]" else "[todo]"
-        "${i + 1}. $mark ${h.note}  (${h.file}:${h.line})"
+        val missing = if (AvecMoiNavigation.resolveFile(project, h.file) == null) "  ⚠ FILE NOT FOUND" else ""
+        "${i + 1}. $mark ${h.note}  (${h.file}:${h.line})$missing"
       }.joinToString("\n")
     }
     return if (text.isBlank()) {
@@ -762,13 +821,14 @@ class AvecMoiMcpService : Disposable {
     name: String,
     description: String,
     vararg properties: Pair<String, JsonObject>,
+    optional: Set<String> = emptySet(),
   ) = addJsonObject {
     put("name", name)
     put("description", description)
     putJsonObject("inputSchema") {
       put("type", "object")
       putJsonObject("properties") { properties.forEach { (k, v) -> put(k, v) } }
-      putJsonArray("required") { properties.forEach { (k, _) -> add(k) } }
+      putJsonArray("required") { properties.forEach { (k, _) -> if (k !in optional) add(k) } }
     }
   }
 
