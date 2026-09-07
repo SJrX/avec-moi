@@ -1,11 +1,19 @@
-<!-- Default note-inlay colors for dark schemes: FILESTATUS_IGNORED foreground over the
-     FileColor "Yellow" (non-project) background, dark-theme values. Merged in via
-     additionalTextAttributes. -->
+<!-- Default note-inlay colors for dark schemes. Merged in via additionalTextAttributes.
+     todo: FILESTATUS_IGNORED fg over FileColor "Yellow" (non-project) bg.
+     done: FILESTATUS_ADDED  fg over FileColor "Green" bg.  Both italic (FONT_TYPE 2). -->
 <list>
   <option name="AVEC_MOI_NOTE_INLAY">
     <value>
       <option name="FOREGROUND" value="d69a6b" />
       <option name="BACKGROUND" value="291f1c" />
+      <option name="FONT_TYPE" value="2" />
+    </value>
+  </option>
+  <option name="AVEC_MOI_NOTE_INLAY_DONE">
+    <value>
+      <option name="FOREGROUND" value="73bd79" />
+      <option name="BACKGROUND" value="1c261c" />
+      <option name="FONT_TYPE" value="2" />
     </value>
   </option>
 </list>

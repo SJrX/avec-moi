@@ -19,7 +19,6 @@ import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.JBColor
 import com.intellij.util.IconUtil
 import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
 import java.awt.Color
 import java.awt.Graphics
 import java.awt.Graphics2D
@@ -122,8 +121,9 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val editor = inlay.editor
       val g2 = g as Graphics2D
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-      val attrs = editor.colorsScheme.getAttributes(AvecMoiColors.NOTE_INLAY)
-      val fg = attrs?.foregroundColor ?: NOTE_FG_FALLBACK
+      val key = if (handoff.done) AvecMoiColors.NOTE_INLAY_DONE else AvecMoiColors.NOTE_INLAY
+      val attrs = editor.colorsScheme.getAttributes(key)
+      val fg = attrs?.foregroundColor ?: if (handoff.done) NOTE_FG_DONE_FALLBACK else NOTE_FG_FALLBACK
       val lines = lines()
       val lineHeight = editor.lineHeight
 
@@ -134,7 +134,7 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       icon.paintIcon(editor.contentComponent, g2, targetRegion.x + pad, targetRegion.y + (lineHeight - icon.iconHeight) / 2)
 
       g2.font = font(editor)
-      g2.color = if (handoff.done) UIUtil.getInactiveTextColor() else fg
+      g2.color = fg
       val ascent = g2.fontMetrics.ascent
       val textX = targetRegion.x + pad + icon.iconWidth + gap
       lines.forEachIndexed { i, line ->
@@ -143,9 +143,10 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     }
 
     companion object {
-      // Amber fallback for schemes that don't pick up our bundled defaults (light / dark), echoing
-      // the IDE's ignored / non-project file foreground.
+      // Foreground fallbacks for schemes that don't pick up our bundled defaults (light / dark):
+      // todo = the ignored / non-project amber, done = the added green.
       private val NOTE_FG_FALLBACK = JBColor(Color(0x8C, 0x4F, 0x00), Color(0xD6, 0x9A, 0x6B))
+      private val NOTE_FG_DONE_FALLBACK = JBColor(Color(0x06, 0x7D, 0x17), Color(0x73, 0xBD, 0x79))
 
       // The avec-moi plugin icon (40x40) scaled down to a marker size for the inlay.
       private val ICON: Icon = IconLoader.getIcon("/META-INF/pluginIcon.svg", NoteInlayRenderer::class.java).let {
