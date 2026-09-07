@@ -92,7 +92,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
   private var activeSessionId: String? = null
 
   private val statusHere = AllIcons.RunConfigurations.TestState.Green2
-  private val statusElsewhere = AllIcons.RunConfigurations.TestState.Yellow2
+  private val statusIdle = AllIcons.RunConfigurations.TestState.Yellow2
   private val statusRed = AllIcons.RunConfigurations.TestState.Red2
   private val statusDown = AllIcons.General.Error
   private var toolbarRef: ActionToolbar? = null
@@ -444,7 +444,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     private fun iconFor(state: AvecMoiConnectionState): Icon = when (state) {
       AvecMoiConnectionState.SERVER_DOWN -> statusDown
       AvecMoiConnectionState.HERE -> statusHere
-      AvecMoiConnectionState.ELSEWHERE -> statusElsewhere
+      AvecMoiConnectionState.IDLE -> statusIdle
       AvecMoiConnectionState.NONE -> statusRed
     }
 
@@ -461,7 +461,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     private fun tooltipFor(state: AvecMoiConnectionState): String = when (state) {
       AvecMoiConnectionState.SERVER_DOWN -> "The MCP server couldn't start — click for details."
       AvecMoiConnectionState.HERE -> "An agent is working with this project. Click for details."
-      AvecMoiConnectionState.ELSEWHERE -> "An agent is connected, but to another project. Click for details."
+      AvecMoiConnectionState.IDLE -> "An agent is connected but hasn't done anything in this project. Click for details."
       AvecMoiConnectionState.NONE -> "Server running; no agent has connected yet. Click to connect."
     }
 
@@ -511,10 +511,11 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
           "An agent has worked with Avec Moi in this project this session.",
           "Avec Moi — Agent Connection",
         )
-        AvecMoiConnectionState.ELSEWHERE -> Messages.showInfoMessage(
+        AvecMoiConnectionState.IDLE -> Messages.showInfoMessage(
           project,
-          "An agent is connected, but hasn't targeted THIS project yet.\n\n" +
-            "Make sure it calls tools with this project's path (its cwd):\n  ${project.basePath}",
+          "An agent has connected to Avec Moi, but hasn't done anything in THIS project yet.\n\n" +
+            "If it's meant to work here, make sure it calls tools with this project's path (its cwd):" +
+            "\n  ${project.basePath}",
           "Avec Moi — Agent Connection",
         )
         AvecMoiConnectionState.NONE -> Messages.showInfoMessage(

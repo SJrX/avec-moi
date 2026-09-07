@@ -1,7 +1,7 @@
 package net.sjrx.intellij.plugins.avecmoi
 
 import net.sjrx.intellij.plugins.avecmoi.AvecMoiConnectionState.Companion.of
-import net.sjrx.intellij.plugins.avecmoi.AvecMoiConnectionState.ELSEWHERE
+import net.sjrx.intellij.plugins.avecmoi.AvecMoiConnectionState.IDLE
 import net.sjrx.intellij.plugins.avecmoi.AvecMoiConnectionState.HERE
 import net.sjrx.intellij.plugins.avecmoi.AvecMoiConnectionState.NONE
 import net.sjrx.intellij.plugins.avecmoi.AvecMoiConnectionState.SERVER_DOWN
@@ -28,8 +28,8 @@ class AvecMoiConnectionStateTest {
   }
 
   @Test
-  fun contactWithOnlyAnotherProjectIsElsewhere() {
-    assertEquals(ELSEWHERE, of(serverRunning = true, contactedThisProject = false, anyContact = true))
+  fun anAgentConnectedButNotWorkingThisProjectIsIdle() {
+    assertEquals(IDLE, of(serverRunning = true, contactedThisProject = false, anyContact = true))
   }
 
   @Test
