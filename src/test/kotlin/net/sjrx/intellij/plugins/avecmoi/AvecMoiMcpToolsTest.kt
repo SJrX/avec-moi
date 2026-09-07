@@ -62,6 +62,25 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     assertTrue("light review in brief: $text", text.contains("keep it light"))
   }
 
+  fun testGuidanceMergesGlobalAndProjectFamiliarityWithProjectOverriding() {
+    // Fixture Setup — a global default and a project-specific override for the same subject
+    globalSettings.familiarity = mutableListOf(
+      FamiliarityEntry().also { it.subject = "Kotlin"; it.level = Familiarity.FLUENT },
+      FamiliarityEntry().also { it.subject = "SQL"; it.level = Familiarity.COMFORTABLE },
+    )
+    settings.familiarity = mutableListOf(
+      FamiliarityEntry().also { it.subject = "Kotlin"; it.level = Familiarity.RUSTY },
+    )
+
+    // Exercise SUT — the brief the agent actually fetches
+    val text = callTool("get_avecmoi_guidance", """{ "projectPath": "$projectPath" }""").contentText()
+
+    // Verification — global-only row survives, project override replaces the global one
+    assertTrue("global-only row must appear: $text", text.contains("SQL: comfortable"))
+    assertTrue("project override must win: $text", text.contains("Kotlin: rusty"))
+    assertFalse("the global Kotlin level must be overridden away: $text", text.contains("Kotlin: fluent"))
+  }
+
   fun testAToolCallForAnUnknownDirectoryReportsNoProject() {
     // Exercise SUT
     // language=JSON

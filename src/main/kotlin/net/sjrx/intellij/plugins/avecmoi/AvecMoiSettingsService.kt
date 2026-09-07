@@ -5,6 +5,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.StoragePathMacros
+import com.intellij.openapi.components.service
 import com.intellij.util.xmlb.annotations.XCollection
 
 /** What happens to the target terminal when a quick action is sent to the agent. */
@@ -60,19 +61,35 @@ enum class ReviewLevel(val label: String, val guidanceLine: String) {
   ),
 }
 
-/** One row of the familiarity table: a subject, how familiar the human is, and how much they care. */
+/**
+ * Whether a familiarity row applies to THIS project only or to every project. Global rows persist
+ * app-wide (a fact about the developer, like "fluent in Kotlin"); project rows override them here
+ * (e.g. "rusty in this project's ancient Kotlin"). The scope decides which store a row is saved in.
+ */
+enum class FamiliarityScope(val label: String) {
+  PROJECT("This project"),
+  GLOBAL("All projects");
+
+  override fun toString(): String = label
+}
+
+/** One row of the familiarity table: a subject, how familiar the human is, how much they care, and scope. */
 class FamiliarityEntry {
   var subject: String = ""
   var level: Familiarity = Familiarity.COMFORTABLE
   var interest: Interest = Interest.NEUTRAL
+  var scope: FamiliarityScope = FamiliarityScope.PROJECT
 
-  fun copy(): FamiliarityEntry =
-    FamiliarityEntry().also { it.subject = subject; it.level = level; it.interest = interest }
+  fun copy(): FamiliarityEntry = FamiliarityEntry().also {
+    it.subject = subject; it.level = level; it.interest = interest; it.scope = scope
+  }
 
   override fun equals(other: Any?): Boolean =
-    other is FamiliarityEntry && other.subject == subject && other.level == level && other.interest == interest
+    other is FamiliarityEntry &&
+      other.subject == subject && other.level == level && other.interest == interest && other.scope == scope
 
-  override fun hashCode(): Int = (subject.hashCode() * 31 + level.hashCode()) * 31 + interest.hashCode()
+  override fun hashCode(): Int =
+    ((subject.hashCode() * 31 + level.hashCode()) * 31 + interest.hashCode()) * 31 + scope.hashCode()
 }
 
 /**
@@ -147,7 +164,12 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
     get() = state.familiarity
     set(value) { state.familiarity = value }
 
-  /** The composed per-project brief the agent fetches (goal + familiarity + review + extra context). */
-  fun guidance(): String =
-    AvecMoiGuidance.composeBrief(state.goal, state.familiarity, state.reviewLevel, state.extraContext)
+  /**
+   * The composed per-project brief the agent fetches (goal + familiarity + review + extra context).
+   * Familiarity merges the app-wide GLOBAL rows with this project's rows (project overrides by subject).
+   */
+  fun guidance(): String {
+    val effective = AvecMoiGuidance.effectiveFamiliarity(service<AvecMoiGlobalSettings>().familiarity, state.familiarity)
+    return AvecMoiGuidance.composeBrief(state.goal, effective, state.reviewLevel, state.extraContext)
+  }
 }

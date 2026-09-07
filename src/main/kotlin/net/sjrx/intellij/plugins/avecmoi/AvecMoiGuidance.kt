@@ -7,6 +7,22 @@ package net.sjrx.intellij.plugins.avecmoi
  */
 object AvecMoiGuidance {
 
+  /**
+   * The effective familiarity for a project: global rows (the developer's defaults) plus this
+   * project's rows, where a project row OVERRIDES a global row with the same subject (trimmed,
+   * case-insensitive). Global-then-project order, project-only rows appended. Pure/testable.
+   */
+  fun effectiveFamiliarity(
+    global: List<FamiliarityEntry>,
+    project: List<FamiliarityEntry>,
+  ): List<FamiliarityEntry> {
+    val byKey = LinkedHashMap<String, FamiliarityEntry>()
+    (global + project)
+      .filter { it.subject.isNotBlank() }
+      .forEach { byKey[it.subject.trim().lowercase()] = it } // project comes second, so it overrides
+    return byKey.values.toList()
+  }
+
   fun composeBrief(
     goal: String,
     familiarity: List<FamiliarityEntry>,

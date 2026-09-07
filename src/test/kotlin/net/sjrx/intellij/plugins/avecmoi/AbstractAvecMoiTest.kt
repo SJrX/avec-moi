@@ -25,6 +25,8 @@ abstract class AbstractAvecMoiTest : BasePlatformTestCase() {
     ring.resetContactForTest()
     mcp.resetContactForTest()
     project.service<AvecMoiSettingsService>().loadState(AvecMoiSettingsService.State())
+    // Global familiarity is an APP service — shared across the run, so wipe it too.
+    service<AvecMoiGlobalSettings>().loadState(AvecMoiGlobalSettings.State())
   }
 
   // --- ring / session DSL ------------------------------------------------------------------------
@@ -36,6 +38,10 @@ abstract class AbstractAvecMoiTest : BasePlatformTestCase() {
   /** The project-level settings store under test. */
   protected val settings: AvecMoiSettingsService
     get() = project.service()
+
+  /** The app-level (IDE-wide) settings store under test. */
+  protected val globalSettings: AvecMoiGlobalSettings
+    get() = service()
 
   /** Copy state out of [from] into a brand-new store, exactly as reopening the IDE would. */
   protected fun roundTrip(from: AvecMoiRingService): AvecMoiRingService =

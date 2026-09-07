@@ -1,5 +1,6 @@
 package net.sjrx.intellij.plugins.avecmoi
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,6 +79,40 @@ class AvecMoiGuidanceTest {
     )
     assertTrue(brief.contains("Kotlin: rusty"))
     assertFalse("a blank-subject row must not render its level: $brief", brief.contains(": new"))
+  }
+
+  // --- global/project familiarity merge -------------------------------------------------------
+
+  @Test
+  fun effectiveFamiliarityUnionsGlobalAndProjectRows() {
+    val effective = AvecMoiGuidance.effectiveFamiliarity(
+      global = listOf(entry("Kotlin", Familiarity.FLUENT)),
+      project = listOf(entry("This repo's DSL", Familiarity.NEW)),
+    )
+    assertEquals(listOf("Kotlin", "This repo's DSL"), effective.map { it.subject })
+  }
+
+  @Test
+  fun aProjectRowOverridesAGlobalRowOfTheSameSubject() {
+    // Globally fluent in Kotlin, but rusty in THIS project's ancient Kotlin — project wins, in place.
+    val effective = AvecMoiGuidance.effectiveFamiliarity(
+      global = listOf(entry("Kotlin", Familiarity.FLUENT, Interest.KEEN), entry("SQL", Familiarity.COMFORTABLE)),
+      project = listOf(entry(" kotlin ", Familiarity.RUSTY, Interest.UNINTERESTED)), // padded + different case
+    )
+    // The override keeps the global row's POSITION but is the project row wholesale (its text wins too).
+    assertEquals("override stays in the global row's slot", listOf("kotlin", "sql"), effective.map { it.subject.trim().lowercase() })
+    val kotlin = effective.first { it.subject.trim().equals("kotlin", ignoreCase = true) }
+    assertEquals(Familiarity.RUSTY, kotlin.level)
+    assertEquals(Interest.UNINTERESTED, kotlin.interest)
+  }
+
+  @Test
+  fun blankSubjectRowsAreDroppedFromTheMerge() {
+    val effective = AvecMoiGuidance.effectiveFamiliarity(
+      global = listOf(entry("   ", Familiarity.NEW)),
+      project = listOf(entry("Kotlin", Familiarity.FLUENT), entry("", Familiarity.NEW)),
+    )
+    assertEquals(listOf("Kotlin"), effective.map { it.subject })
   }
 
   @Test

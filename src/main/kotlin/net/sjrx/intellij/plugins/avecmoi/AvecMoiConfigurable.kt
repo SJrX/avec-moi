@@ -33,11 +33,19 @@ import javax.swing.table.TableCellEditor
 class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Avec Moi") {
 
   private val settings = project.service<AvecMoiSettingsService>()
+  private val globalSettings = service<AvecMoiGlobalSettings>()
   private val mcpSettings = service<AvecMoiMcpSettings>()
 
   // The familiarity table isn't DSL-bindable, so it's synced manually in onReset/onApply/onIsModified.
-  private val familiarityModel = ListTableModel<FamiliarityEntry>(SubjectColumn(), LevelColumn(), InterestColumn())
+  // Rows carry a scope; on apply they're partitioned into the project vs global (app-wide) stores.
+  private val familiarityModel =
+    ListTableModel<FamiliarityEntry>(SubjectColumn(), LevelColumn(), InterestColumn(), ScopeColumn())
   private val familiarityTable = TableView(familiarityModel)
+
+  /** The table's rows, drawn from both stores and tagged by source. Order: global rows, then project. */
+  private fun scopedRows(): List<FamiliarityEntry> =
+    globalSettings.familiarity.map { it.copy().also { e -> e.scope = FamiliarityScope.GLOBAL } } +
+      settings.familiarity.map { it.copy().also { e -> e.scope = FamiliarityScope.PROJECT } }
 
   override fun createPanel(): DialogPanel = panel {
     group("Quick Actions") {
@@ -87,7 +95,8 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         cell(panel).align(AlignX.FILL)
           .label(
             "Familiarity & interest (self-reported — add whatever's relevant). Interest is how much " +
-              "you want to do it yourself, not how well you know it:",
+              "you want to do it yourself, not how well you know it. Scope: 'All projects' rows are " +
+              "remembered IDE-wide; a 'This project' row of the same subject overrides them here:",
             LabelPosition.TOP,
           )
       }
@@ -108,10 +117,17 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
       }
     }
 
-    onReset { familiarityModel.items = settings.familiarity.map { it.copy() } }
-    onIsModified { familiarityModel.items != settings.familiarity }
+    onReset { familiarityModel.items = scopedRows() }
+    onIsModified {
+      // Compare per-scope (filter preserves order), so it's robust to how rows are interleaved.
+      familiarityModel.items.filter { it.scope == FamiliarityScope.GLOBAL } != globalSettings.familiarity ||
+        familiarityModel.items.filter { it.scope == FamiliarityScope.PROJECT } != settings.familiarity
+    }
     onApply {
-      settings.familiarity = familiarityModel.items.map { it.copy() }.toMutableList()
+      settings.familiarity = familiarityModel.items
+        .filter { it.scope == FamiliarityScope.PROJECT }.map { it.copy() }.toMutableList()
+      globalSettings.familiarity = familiarityModel.items
+        .filter { it.scope == FamiliarityScope.GLOBAL }.map { it.copy() }.toMutableList()
       // Reflect an editorNoteScope change (and any note edits) in the editor inlays immediately.
       project.service<AvecMoiInlayService>().refreshAll()
       // Rebind the server only if the port actually changed.
@@ -157,6 +173,15 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
     override fun getWidth(table: JTable?): Int = 150
     override fun getEditor(item: FamiliarityEntry): TableCellEditor =
       DefaultCellEditor(ComboBox(Interest.entries.toTypedArray()))
+  }
+
+  private class ScopeColumn : ColumnInfo<FamiliarityEntry, FamiliarityScope>("Scope") {
+    override fun valueOf(item: FamiliarityEntry): FamiliarityScope = item.scope
+    override fun isCellEditable(item: FamiliarityEntry): Boolean = true
+    override fun setValue(item: FamiliarityEntry, value: FamiliarityScope) { item.scope = value }
+    override fun getWidth(table: JTable?): Int = 150
+    override fun getEditor(item: FamiliarityEntry): TableCellEditor =
+      DefaultCellEditor(ComboBox(FamiliarityScope.entries.toTypedArray()))
   }
 
   private class GuidancePreviewDialog(project: Project, private val text: String) : DialogWrapper(project) {
