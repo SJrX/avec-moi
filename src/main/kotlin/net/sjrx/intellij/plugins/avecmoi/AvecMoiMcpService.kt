@@ -390,8 +390,9 @@ class AvecMoiMcpService : Disposable {
           "to recover state before re-registering. Returns JSON: {project, handoffs:[{handoff (the " +
           "1-based number for mark_handoff_done/update_handoff/remove_handoff), done, file, line, " +
           "note, fileExists}]}. fileExists=false is a PROBLEM: the handoff points at a file that isn't " +
-          "on disk, so the human can't act on it (a wrong path, or scaffolding you haven't written " +
-          "yet) — fix it with update_handoff, or createFileIfMissing. Don't leave it broken.",
+          "on disk, so the human can't act on it (a wrong path, scaffolding you haven't written yet, or " +
+          "a file that was deleted since) — fix it with update_handoff, or createFileIfMissing if you " +
+          "meant to create it. Don't leave it broken.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
       tool(
@@ -1004,6 +1005,10 @@ class AvecMoiMcpService : Disposable {
         rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
       - To add a spot mid-flight, use `add_handoff` (appends one, preserving existing progress);
         register_handoffs replaces the whole set and resets done-state.
+      - When a handoff is for a NEW file — one you want the human to fill in but haven't written to
+        disk — pass createFileIfMissing=true on register_handoffs / add_handoff (or update_handoff).
+        That creates the (empty) file so the handoff is live from the start, instead of coming back as
+        a broken fileExists=false handoff. It's how you signify "this is a new file."
       - KEEP THE HANDOFFS IN SYNC WITH THE PLAN. A really bad failure mode: you and the human discuss a
         change, you DON'T update the handoffs, and they go implement the now-stale handoffs and waste
         their time. The human trusts what's shown in the IDE. So whenever a discussion changes what a
@@ -1045,8 +1050,9 @@ class AvecMoiMcpService : Disposable {
         list_handoffs comes back empty when you expected handoffs (the IDE restarted, or the human
         cleared them), just re-register from your plan — it's not an error. (register_handoffs
         replaces the whole set; clear_handoffs empties it.) Any handoff that comes back with
-        fileExists=false is broken — the file isn't on disk, so the human can't act on it. Treat it as
-        a warning to resolve: fix the path with update_handoff, or create the file (createFileIfMissing).
+        fileExists=false is broken — the file isn't on disk (a wrong path, scaffolding you haven't
+        written, or a file deleted since), so the human can't act on it. Treat it as a warning to
+        resolve: fix the path with update_handoff, or create the file (createFileIfMissing).
 
       All tools take a `projectPath` (the human's project directory, i.e. your cwd) so the right
       open IDE project is targeted.
