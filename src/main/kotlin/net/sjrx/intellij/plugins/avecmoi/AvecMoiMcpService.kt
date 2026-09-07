@@ -30,6 +30,9 @@ import kotlinx.serialization.json.putJsonObject
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.util.Properties
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Application-level (one per IDE process) MCP server for avec-moi. Hand-rolled JSON-RPC 2.0 over
@@ -91,7 +94,7 @@ class AvecMoiMcpService : Disposable {
   /** Stop and rebind on the currently-configured port (call after the port setting changes). */
   @Synchronized
   fun restart() {
-    server?.stop(0)
+    stopServer(server)
     server = null
     startIfNeeded()
   }
@@ -114,8 +117,22 @@ class AvecMoiMcpService : Disposable {
         ex.close()
       }
     }
-    s.executor = null
+    // Our own daemon-thread pool (not HttpServer's internal thread) so we can deterministically kill
+    // the request threads on unload — a lingering handler thread would pin the plugin classloader
+    // and force a restart on reload. Daemon so it never blocks JVM shutdown either.
+    s.executor = Executors.newFixedThreadPool(2) { r -> Thread(r, "avec-moi-mcp").apply { isDaemon = true } }
     return s
+  }
+
+  /** Stop [s] with a short grace for in-flight exchanges, then hard-stop its worker threads so none
+   *  lingers holding the plugin classloader (keeps the plugin dynamically unloadable). */
+  private fun stopServer(s: HttpServer?) {
+    s ?: return
+    s.stop(1)
+    (s.executor as? ExecutorService)?.let { pool ->
+      pool.shutdownNow()
+      runCatching { pool.awaitTermination(1, TimeUnit.SECONDS) }
+    }
   }
 
   /** Start a throwaway server on an ephemeral port for an HTTP-level test; returns the bound port. */
@@ -123,7 +140,7 @@ class AvecMoiMcpService : Disposable {
   internal fun startOnEphemeralPortForTest(disposable: Disposable): Int {
     val s = configureServer(0)
     s.start()
-    com.intellij.openapi.util.Disposer.register(disposable) { s.stop(0) }
+    com.intellij.openapi.util.Disposer.register(disposable) { stopServer(s) }
     return s.address.port
   }
 
@@ -750,7 +767,7 @@ class AvecMoiMcpService : Disposable {
   }
 
   override fun dispose() {
-    server?.stop(0)
+    stopServer(server)
     server = null
   }
 
