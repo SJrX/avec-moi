@@ -1095,11 +1095,14 @@ class AvecMoiMcpService : Disposable {
         rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
       - Handoffs have a kind:
           - 'todo' (default): a spot to implement.
-          - 'read': a sequenced step to read/understand specific code the human needs as context BEFORE
-            a to-do — e.g. an existing implementation they'll mirror, the interface they're implementing,
-            or scaffolding YOU just wrote that they'll implement into (point them at it so they see the
-            structure before filling in the load-bearing parts). Still a work item (a to-do; counted,
-            stepped through, marked done); its output is understanding, not code.
+          - 'read': a sequenced step to read/understand code the human needs as context — an existing
+            implementation they'll mirror, an interface they're implementing, or supporting scaffolding
+            you wrote that ISN'T itself a to-do and lives ELSEWHERE: a small helper class you filled in
+            whole, boilerplate at the top of the file, or (in C/C++) the header + prototype you created
+            for a function they'll implement in the .c/.cpp. Do NOT put a 'read' right next to the to-do
+            it supports — if the scaffolding is the very stub they're filling in, they already see it
+            inline and a read there is just noise. Still a work item (a to-do; counted, stepped through,
+            marked done); its output is understanding, not code.
           - 'reference': an unordered, session-long bookmark to code that's handy to jump to whenever
             (not tied to one task). NOT work — its OWN list and index namespace (list_handoffs'
             references[]), not counted, not stepped through, can't be marked done. To edit/remove one,
