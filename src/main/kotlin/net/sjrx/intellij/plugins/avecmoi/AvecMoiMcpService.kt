@@ -1096,9 +1096,10 @@ class AvecMoiMcpService : Disposable {
       - Handoffs have a kind:
           - 'todo' (default): a spot to implement.
           - 'read': a sequenced step to read/understand specific code the human needs as context BEFORE
-            a to-do — e.g. an existing implementation they'll mirror, or the interface they're
-            implementing. Still a work item (a to-do; counted, stepped through, marked done); its output
-            is understanding, not code. Use it when they genuinely need to study something first.
+            a to-do — e.g. an existing implementation they'll mirror, the interface they're implementing,
+            or scaffolding YOU just wrote that they'll implement into (point them at it so they see the
+            structure before filling in the load-bearing parts). Still a work item (a to-do; counted,
+            stepped through, marked done); its output is understanding, not code.
           - 'reference': an unordered, session-long bookmark to code that's handy to jump to whenever
             (not tied to one task). NOT work — its OWN list and index namespace (list_handoffs'
             references[]), not counted, not stepped through, can't be marked done. To edit/remove one,
