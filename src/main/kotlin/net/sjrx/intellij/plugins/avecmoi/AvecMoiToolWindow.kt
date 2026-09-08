@@ -182,7 +182,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
 
     treeModel.reload()
     expandDefault()
-    selectActiveHandoff(ring.cursorIndex())
+    selectHandoff(ring.currentHandoff())
   }
 
   /** Repaint so the renderer re-reads live marker line numbers after the human edits. */
@@ -219,8 +219,11 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     tree.expandPath(TreePath(sn.path))
     for (j in 0 until sn.childCount) {
       val hn = sn.getChildAt(j) as DefaultMutableTreeNode
-      if ((hn.userObject as? AvecMoiRingService.Handoff)?.done == false) {
-        tree.expandPath(TreePath(hn.path))
+      when (val obj = hn.userObject) {
+        // Not-done to-dos/reads open so their note shows; the References folder opens so its rows show.
+        is AvecMoiRingService.Handoff -> if (!obj.done) tree.expandPath(TreePath(hn.path))
+        is Group -> tree.expandPath(TreePath(hn.path))
+        else -> {}
       }
     }
   }
@@ -233,13 +236,32 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     return activeGroup.getChildAt(0) as? DefaultMutableTreeNode
   }
 
-  internal fun selectActiveHandoff(index: Int) {
+  /** Select [handoff]'s row by identity (works whether it's a work item or a reference in its folder). */
+  internal fun selectHandoff(handoff: AvecMoiRingService.Handoff?) {
+    handoff ?: return
     val sn = activeSessionNode() ?: return
-    if (index < 0 || index >= sn.childCount) return
-    val node = sn.getChildAt(index) as DefaultMutableTreeNode
+    val node = findHandoffNode(sn, handoff) ?: return
     val path = TreePath(node.path)
     tree.selectionPath = path
     tree.scrollPathToVisible(path)
+  }
+
+  private fun findHandoffNode(
+    sessionNode: DefaultMutableTreeNode,
+    handoff: AvecMoiRingService.Handoff,
+  ): DefaultMutableTreeNode? {
+    for (i in 0 until sessionNode.childCount) {
+      val child = sessionNode.getChildAt(i) as DefaultMutableTreeNode
+      when (child.userObject) {
+        is AvecMoiRingService.Handoff -> if (child.userObject === handoff) return child
+        is Group -> for (j in 0 until child.childCount) { // the References folder
+          val refNode = child.getChildAt(j) as DefaultMutableTreeNode
+          if (refNode.userObject === handoff) return refNode
+        }
+        else -> {}
+      }
+    }
+    return null
   }
 
   private fun onDoubleClick() {
@@ -263,6 +285,11 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     val handoff = handoffNode?.userObject as? AvecMoiRingService.Handoff
     shownHandoff = handoff
     shownHandoffNode = handoffNode
+    // Selecting a row makes it the current item — which is what floats a reference's note in the editor
+    // (references show only when current). Cursor-only, so it refreshes inlays, not the whole tree.
+    if (handoff != null && project.service<AvecMoiRingService>().setCurrent(handoff)) {
+      project.service<AvecMoiInlayService>().refreshAll()
+    }
     loadingNote = true
     try {
       noteDetail.isEditable = handoff != null

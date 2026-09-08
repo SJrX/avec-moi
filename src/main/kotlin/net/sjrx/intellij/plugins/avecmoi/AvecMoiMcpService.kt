@@ -345,7 +345,9 @@ class AvecMoiMcpService : Disposable {
                 "lines for structure; do NOT hard-wrap at a fixed column (the IDE soft-wraps for the reader).")
             }
             putJsonObject("position") {
-              put("type", "integer"); put("description", "1-based position to insert at; default appends to the end.")
+              put("type", "integer")
+              put("description", "1-based position to insert at WITHIN its kind's list (work vs " +
+                "references); default appends to the end of that list.")
             }
             putJsonObject("kind") {
               put("type", "string")
@@ -433,7 +435,7 @@ class AvecMoiMcpService : Disposable {
       )
       tool(
         "clear_handoffs",
-        "Clear all registered handoffs for a project (e.g. the plan is finished).",
+        "Clear ALL of a project's handoffs AND references (the whole plan) — e.g. it's finished.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
       addJsonObject {

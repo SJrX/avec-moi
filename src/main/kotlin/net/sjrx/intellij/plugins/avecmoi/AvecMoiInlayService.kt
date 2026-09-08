@@ -87,13 +87,13 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     val lineCount = editor.document.lineCount
     if (lineCount == 0) return
     val ring = project.service<AvecMoiRingService>()
-    val cursor = ring.cursorIndex()
-    // Work handoffs honor the ALL/CURRENT scope; references are context, so they always show (unless OFF).
-    ring.all().forEachIndexed { i, handoff ->
-      if (scope == EditorNoteScope.CURRENT && i != cursor) return@forEachIndexed
-      addNoteInlay(editor, editorPath, lineCount, handoff)
+    val current = ring.currentHandoff()
+    // Work handoffs honor the ALL/CURRENT scope. References are context — they float only when they're
+    // the current (selected) item, so they don't clutter the editor the rest of the time.
+    ring.all().forEach { handoff ->
+      if (scope == EditorNoteScope.ALL || handoff === current) addNoteInlay(editor, editorPath, lineCount, handoff)
     }
-    ring.references().forEach { addNoteInlay(editor, editorPath, lineCount, it) }
+    ring.references().forEach { if (it === current) addNoteInlay(editor, editorPath, lineCount, it) }
     // Inlays created before the editor is laid out measure against a stale (often too-small) width, so
     // their height can be wrong — leaving blank space after the note until something forces a re-measure.
     // Re-measure once on the next EDT cycle, when the viewport width is real.

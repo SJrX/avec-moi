@@ -260,12 +260,13 @@ class AvecMoiRingService(private val project: Project) :
       val s = activeLocked() ?: return@synchronized false
       val target = s.list(reference)
       if (index !in target.indices) return@synchronized false
+      // The removed item's index in the combined [work..., refs...] sequence the cursor lives in.
+      val combinedIndex = if (reference) s.handoffs.size + index else index
       target.removeAt(index).marker?.dispose()
-      if (!reference) {
-        // Keep the cursor on the same logical handoff: removing one *before* it shifts it left by one.
-        if (index < s.cursor) s.cursor--
-        if (s.cursor >= s.handoffs.size) s.cursor = s.handoffs.size - 1
-      }
+      // Keep the cursor on the same logical item: anything removed before it shifts it left by one.
+      if (combinedIndex < s.cursor) s.cursor--
+      val combinedSize = s.handoffs.size + s.references.size
+      if (s.cursor >= combinedSize) s.cursor = combinedSize - 1
       true
     }
     if (ok) changed()
@@ -294,7 +295,25 @@ class AvecMoiRingService(private val project: Project) :
   /** The reference bookmarks of the active session (their own namespace). */
   @Synchronized fun references(): List<Handoff> = activeLocked()?.references?.toList() ?: emptyList()
 
+  /**
+   * The cursor as an index into the COMBINED sequence [work handoffs..., references...], or -1. Work
+   * comes first so references iterate only after tasks; a reference index is >= all().size (which is
+   * why DoThisStep's all().getOrNull(cursor) safely no-ops on a reference).
+   */
   @Synchronized fun cursorIndex(): Int = activeLocked()?.cursor ?: -1
+
+  /** The handoff the cursor points at (a work item OR a reference), or null. */
+  @Synchronized fun currentHandoff(): Handoff? =
+    activeLocked()?.let { (it.handoffs + it.references).getOrNull(it.cursor) }
+
+  /** Point the cursor at [handoff] (by identity), e.g. because its row was selected. Cursor-only. */
+  @Synchronized fun setCurrent(handoff: Handoff): Boolean {
+    val s = activeLocked() ?: return false
+    val idx = (s.handoffs + s.references).indexOfFirst { it === handoff }
+    if (idx < 0) return false
+    s.cursor = idx
+    return true
+  }
 
   @Synchronized
   fun next(): Handoff? = activeLocked()?.let { advance(it, dir = +1) }
@@ -303,30 +322,26 @@ class AvecMoiRingService(private val project: Project) :
   fun prev(): Handoff? = activeLocked()?.let { advance(it, dir = -1) }
 
   /**
-   * Move the cursor to the next (dir = +1) or previous (dir = -1) not-done handoff, wrapping around.
-   * "Next" means the next thing left to do, so completed handoffs are skipped. (The work list holds
-   * only to-dos and reviews; references are a separate list and never appear here.) If everything is
-   * done, fall back to a plain one-step move so navigation still works. Returns the landed handoff.
+   * Move the cursor to the next (dir = +1) / previous (dir = -1) thing worth visiting, over the
+   * combined [work..., references...] sequence, wrapping. Priority: not-done work items (the tasks
+   * left to do). Only once EVERY task is done do references become the cycle — so references iterate
+   * after tasks. If there are no tasks and no references, fall back to any handoff. Returns it.
    */
   private fun advance(s: Session, dir: Int): Handoff? {
-    val n = s.handoffs.size
-    if (n == 0) return null
-    // First index to consider, honoring the -1 "nothing selected yet" sentinel (next→0, prev→last).
-    val start = if (s.cursor in 0 until n) floorMod(s.cursor + dir, n) else if (dir > 0) 0 else n - 1
-    var idx = start
-    repeat(n) {
-      if (!s.handoffs[idx].done) {
-        s.cursor = idx
-        return s.handoffs[idx]
-      }
-      idx = floorMod(idx + dir, n)
+    val combined = s.handoffs + s.references
+    if (combined.isEmpty()) return null
+    val workUndone = s.handoffs.indices.filter { !s.handoffs[it].done } // combined indices (work is first)
+    val refIndices = s.references.indices.map { s.handoffs.size + it }
+    val candidates = when {
+      workUndone.isNotEmpty() -> workUndone
+      refIndices.isNotEmpty() -> refIndices
+      else -> combined.indices.toList() // all done, no references: still navigate
     }
-    // Everything is done: move one step anyway so the buttons still navigate.
-    s.cursor = start
-    return s.handoffs[start]
+    val next = if (dir > 0) candidates.firstOrNull { it > s.cursor } ?: candidates.first()
+    else candidates.lastOrNull { it < s.cursor } ?: candidates.last()
+    s.cursor = next
+    return combined[next]
   }
-
-  private fun floorMod(a: Int, m: Int): Int = ((a % m) + m) % m
 
   // --- helpers ----------------------------------------------------------------------------------
 
@@ -401,7 +416,7 @@ class AvecMoiRingService(private val project: Project) :
 
   override fun loadState(state: PersistedState) {
     synchronized(this) {
-      sessions.forEach { s -> s.handoffs.forEach { it.marker?.dispose() } }
+      sessions.forEach { s -> (s.handoffs + s.references).forEach { it.marker?.dispose() } }
       sessions.clear()
       activeId = state.activeId
       seq = state.seq

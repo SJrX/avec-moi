@@ -39,17 +39,17 @@ abstract class HandoffNavAction(private val forward: Boolean) : AnAction() {
     if (handoff.note.isNotBlank()) {
       WindowManager.getInstance().getStatusBar(project)?.info = "Avec Moi ▸ ${handoff.note}"
     }
-    highlightInToolWindow(project, ring.cursorIndex())
+    highlightInToolWindow(project, handoff)
     // Navigation moves the ring cursor but isn't a ring mutation, so nudge the editor inlays too
-    // (matters for "current handoff only" mode).
+    // (matters for "current handoff only" mode, and for floating the landed reference's note).
     project.service<AvecMoiInlayService>().refreshAll()
   }
 
   /** Select the landed handoff's row in the tool window, if it's currently open. Best-effort. */
-  private fun highlightInToolWindow(project: Project, index: Int) {
+  private fun highlightInToolWindow(project: Project, handoff: AvecMoiRingService.Handoff) {
     val toolWindow = ToolWindowManager.getInstance(project).getToolWindow("Avec Moi") ?: return
     val panel = toolWindow.contentManager.selectedContent?.component as? AvecMoiToolWindowPanel ?: return
-    panel.selectActiveHandoff(index)
+    panel.selectHandoff(handoff)
   }
 }
 

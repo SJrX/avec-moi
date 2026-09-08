@@ -177,4 +177,23 @@ class AvecMoiRingServiceTest : AbstractAvecMoiTest() {
     assertTrue(ring.all().isEmpty())
     assertTrue(ring.references().isEmpty())
   }
+
+  fun testNextReachesReferencesOnlyOnceEveryTaskIsDone() {
+    ring.set(listOf(spec(note = "task"), ref("ctx1"), ref("ctx2")))
+    // While the task is undone, next stays on the task — references come after tasks.
+    assertEquals("task", ring.next()?.note)
+    assertEquals("task", ring.next()?.note)
+    // Finish the task; now the cycle moves into the references, in order.
+    ring.markDone(0, true)
+    assertEquals("ctx1", ring.next()?.note)
+    assertEquals("ctx2", ring.next()?.note)
+    assertEquals("references cycle among themselves once tasks are done", "ctx1", ring.next()?.note)
+  }
+
+  fun testSetCurrentAndCurrentHandoffSpanBothLists() {
+    ring.set(listOf(spec(note = "task"), ref("ctx")))
+    val reference = ring.references().single()
+    assertTrue("a reference can be made current (e.g. by selecting its row)", ring.setCurrent(reference))
+    assertSame(reference, ring.currentHandoff())
+  }
 }
