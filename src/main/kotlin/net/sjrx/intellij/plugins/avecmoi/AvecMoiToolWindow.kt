@@ -90,6 +90,12 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
   private val root = DefaultMutableTreeNode()
   private val treeModel = DefaultTreeModel(root)
   private val doneAttr = SimpleTextAttributes(SimpleTextAttributes.STYLE_STRIKEOUT, JBColor.GRAY)
+
+  // Review + reference rows read in the info blue, matching their editor inlays.
+  private val infoAttr = SimpleTextAttributes(
+    SimpleTextAttributes.STYLE_PLAIN,
+    JBColor(java.awt.Color(0x00, 0x33, 0xB3), java.awt.Color(0x70, 0xAE, 0xFF)),
+  )
   private var activeSessionId: String? = null
 
   private val statusHere = AllIcons.RunConfigurations.TestState.Green2
@@ -191,13 +197,18 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
 
   private fun sessionNode(session: AvecMoiRingService.Session): DefaultMutableTreeNode {
     val node = DefaultMutableTreeNode(session)
-    for (handoff in session.handoffs) {
-      val hn = DefaultMutableTreeNode(handoff)
-      hn.add(DefaultMutableTreeNode(Note(handoff.note)))
-      node.add(hn)
+    for (handoff in session.handoffs) node.add(handoffNode(handoff))
+    // References live in their own folder (separate namespace), so they read as context, not work.
+    if (session.references.isNotEmpty()) {
+      val refGroup = DefaultMutableTreeNode(Group("References", AllIcons.Toolwindows.ToolWindowBookmarks))
+      for (ref in session.references) refGroup.add(handoffNode(ref))
+      node.add(refGroup)
     }
     return node
   }
+
+  private fun handoffNode(handoff: AvecMoiRingService.Handoff): DefaultMutableTreeNode =
+    DefaultMutableTreeNode(handoff).apply { add(DefaultMutableTreeNode(Note(handoff.note))) }
 
   /** Expand group headers + the active session, with todo handoffs open and done ones collapsed. */
   private fun expandDefault() {
@@ -341,7 +352,9 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
             if (obj.id == activeSessionId) SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES
             else SimpleTextAttributes.REGULAR_ATTRIBUTES
           append(obj.name, nameAttr)
-          val meta = (obj.branch?.let { "$it · " } ?: "") + "$done/${obj.handoffs.size}"
+          val refs = obj.references.size
+          val meta = (obj.branch?.let { "$it · " } ?: "") + "$done/${obj.handoffs.size}" +
+            (if (refs > 0) " · $refs ref" else "")
           append("   $meta", SimpleTextAttributes.GRAYED_ATTRIBUTES)
         }
         is AvecMoiRingService.Handoff -> {
@@ -360,6 +373,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
           val nameAttr = when {
             obj.done -> doneAttr
             !resolved -> SimpleTextAttributes.ERROR_ATTRIBUTES
+            obj.kind != HandoffKind.TODO -> infoAttr // review or reference → blue
             else -> SimpleTextAttributes.REGULAR_ATTRIBUTES
           }
           append(obj.file.substringAfterLast('/'), nameAttr)

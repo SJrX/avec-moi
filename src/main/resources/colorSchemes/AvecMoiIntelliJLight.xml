@@ -16,4 +16,11 @@
       <option name="FONT_TYPE" value="2" />
     </value>
   </option>
+  <option name="AVEC_MOI_NOTE_INLAY_INFO">
+    <value>
+      <option name="FOREGROUND" value="0033b3" />
+      <option name="BACKGROUND" value="daf4f5" />
+      <option name="FONT_TYPE" value="2" />
+    </value>
+  </option>
 </list>

@@ -132,4 +132,49 @@ class AvecMoiRingServiceTest : AbstractAvecMoiTest() {
     assertTrue(handoffs[0].done)                      // and so does per-handoff progress
     assertFalse(handoffs[1].done)
   }
+
+  // --- handoff kinds: to-do + review (work) vs reference (own namespace) ------------------------
+
+  private fun ref(note: String) = spec(note = note).copy(kind = HandoffKind.REFERENCE)
+
+  fun testSetPartitionsWorkItemsFromReferences() {
+    ring.set(
+      listOf(
+        spec(note = "impl"),
+        spec(note = "review this").copy(kind = HandoffKind.REVIEW),
+        ref("see this"),
+      ),
+    )
+    assertEquals(listOf("impl", "review this"), ring.all().map { it.note }) // to-do + review are work
+    assertEquals(listOf("see this"), ring.references().map { it.note })     // reference is separate
+  }
+
+  fun testAddRoutesByKindIntoItsOwnNamespace() {
+    ring.set(listOf(spec(note = "a")))
+    val refNumber = ring.add(ref("ctx"), null)
+    assertEquals("a reference is numbered in its own namespace", 1, refNumber)
+    assertEquals(1, ring.all().size)
+    assertEquals(1, ring.references().size)
+  }
+
+  fun testRemoveWithTheReferenceFlagTargetsTheReferenceList() {
+    ring.set(listOf(spec(note = "a"), ref("ctx")))
+    assertTrue(ring.remove(0, reference = true))
+    assertEquals("work list untouched", listOf("a"), ring.all().map { it.note })
+    assertTrue(ring.references().isEmpty())
+  }
+
+  fun testNextStepsThroughWorkItemsOnlyNotReferences() {
+    ring.set(listOf(spec(note = "review").copy(kind = HandoffKind.REVIEW), spec(note = "todo"), ref("ctx")))
+    assertEquals("review", ring.next()?.note) // reviews are work, stepped through
+    assertEquals("todo", ring.next()?.note)
+    assertEquals("wraps within the work list, never landing on a reference", "review", ring.next()?.note)
+  }
+
+  fun testClearEmptiesBothWorkAndReferences() {
+    ring.set(listOf(spec(note = "a"), ref("ctx")))
+    ring.clear()
+    assertTrue(ring.all().isEmpty())
+    assertTrue(ring.references().isEmpty())
+  }
 }

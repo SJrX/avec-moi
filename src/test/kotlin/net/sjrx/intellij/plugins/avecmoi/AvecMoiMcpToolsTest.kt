@@ -227,6 +227,56 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     assertTrue(result.isError())
   }
 
+  // --- kinds: to-do / review (work) vs reference (separate namespace) --------------------------
+
+  fun testRegisterPartitionsWorkHandoffsFromReferencesAndReportsBoth() {
+    // language=JSON
+    val result = callTool("register_handoffs", """
+      { "projectPath": "$projectPath", "handoffs": [
+        { "file": "A.kt", "note": "implement" },
+        { "file": "B.kt", "note": "look at this feedback", "kind": "review" },
+        { "file": "C.kt", "note": "the pattern to mirror", "kind": "reference" } ] }
+    """.trimIndent())
+    assertTrue(result.contentText(), result.contentText().contains("2 handoff(s) and 1 reference(s)"))
+    assertEquals("to-do + review are work items", 2, ring.all().size)
+    assertEquals("reference is its own namespace", 1, ring.references().size)
+  }
+
+  fun testListHandoffsReturnsWorkAndReferenceNamespacesSeparately() {
+    // language=JSON
+    callTool("register_handoffs", """
+      { "projectPath": "$projectPath", "handoffs": [
+        { "file": "A.kt", "note": "implement", "kind": "todo" },
+        { "file": "C.kt", "note": "context", "kind": "reference" } ] }
+    """.trimIndent())
+    val text = callTool("list_handoffs", """{ "projectPath": "$projectPath" }""").contentText()
+    assertTrue(text, text.contains("\"kind\":\"todo\""))
+    assertTrue("references get their own array + 1-based number: $text", text.contains("\"reference\":1"))
+    assertTrue(text, text.contains("\"note\":\"context\""))
+  }
+
+  fun testAddReferenceReportsItAsAReferenceInItsOwnNamespace() {
+    val result = callTool("add_handoff",
+      """{ "projectPath": "$projectPath", "file": "C.kt", "note": "ctx", "kind": "reference" }""")
+    assertTrue(result.contentText(), result.contentText().contains("Added reference #1"))
+    assertEquals(0, ring.all().size)
+    assertEquals(1, ring.references().size)
+  }
+
+  fun testRemoveHandoffWithReferenceFlagTargetsTheReferenceNamespace() {
+    // language=JSON
+    callTool("register_handoffs", """
+      { "projectPath": "$projectPath", "handoffs": [
+        { "file": "A.kt", "note": "implement" },
+        { "file": "C.kt", "note": "ctx", "kind": "reference" } ] }
+    """.trimIndent())
+    // Exercise SUT — remove reference #1 (NOT work handoff #1)
+    val result = callTool("remove_handoff", """{ "projectPath": "$projectPath", "handoff": 1, "reference": true }""")
+    assertFalse(result.isError())
+    assertEquals("the work handoff is untouched", 1, ring.all().size)
+    assertTrue(ring.references().isEmpty())
+  }
+
   // --- mark done / remove (1-based numbering) -------------------------------------------------
 
   fun testMarkHandoffDoneUsesOneBasedNumbersAndTouchesOnlyThatRow() {

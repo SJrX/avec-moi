@@ -34,6 +34,29 @@ class AvecMoiPersistenceSerializationTest : AbstractAvecMoiTest() {
     assertFalse(session.handoffs[1].done)
   }
 
+  fun testHandoffKindsAndReferencesSurviveSerialization() {
+    // Fixture Setup — a to-do, a review (work), and a reference (own namespace)
+    ring.createSession("Feature", null)
+    ring.set(
+      listOf(
+        spec(file = "A.kt", note = "implement"),
+        spec(file = "B.kt", note = "review this").copy(kind = HandoffKind.REVIEW),
+        spec(file = "C.kt", note = "context").copy(kind = HandoffKind.REFERENCE),
+      ),
+    )
+
+    // Exercise SUT — full XML round-trip
+    val restored = XmlSerializer.deserialize(XmlSerializer.serialize(ring.getState()), AvecMoiRingService.PersistedState::class.java)
+    val reloaded = AvecMoiRingService(project).also { it.loadState(restored) }
+
+    // Verification — kinds and the separate reference namespace survive
+    assertEquals(listOf("implement", "review this"), reloaded.all().map { it.note })
+    assertEquals(HandoffKind.TODO, reloaded.all()[0].kind)
+    assertEquals(HandoffKind.REVIEW, reloaded.all()[1].kind)
+    assertEquals(listOf("context"), reloaded.references().map { it.note })
+    assertEquals(HandoffKind.REFERENCE, reloaded.references()[0].kind)
+  }
+
   private fun familiarity(subject: String, level: Familiarity, interest: Interest, scope: FamiliarityScope) =
     FamiliarityEntry().also { it.subject = subject; it.level = level; it.interest = interest; it.scope = scope }
 

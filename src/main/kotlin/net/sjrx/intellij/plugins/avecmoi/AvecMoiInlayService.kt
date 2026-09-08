@@ -84,23 +84,16 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     val scope = project.service<AvecMoiSettingsService>().editorNoteScope
     if (scope == EditorNoteScope.OFF) return
     val editorPath = FileDocumentManager.getInstance().getFile(editor.document)?.path ?: return
+    val lineCount = editor.document.lineCount
+    if (lineCount == 0) return
     val ring = project.service<AvecMoiRingService>()
     val cursor = ring.cursorIndex()
+    // Work handoffs honor the ALL/CURRENT scope; references are context, so they always show (unless OFF).
     ring.all().forEachIndexed { i, handoff ->
       if (scope == EditorNoteScope.CURRENT && i != cursor) return@forEachIndexed
-      if (handoff.note.isBlank()) return@forEachIndexed
-      if (AvecMoiNavigation.resolveFile(project, handoff.file)?.path != editorPath) return@forEachIndexed
-      val lineCount = editor.document.lineCount
-      if (lineCount == 0) return@forEachIndexed
-      val line = (handoff.line - 1).coerceIn(0, lineCount - 1)
-      val offset = editor.document.getLineStartOffset(line)
-      val isCollapsed = handoff in collapsed
-      val maxCols = project.service<AvecMoiSettingsService>().noteWrapMaxColumns
-      // The renderer carries its own gutter chevron (calcGutterIconRenderer), so the fold arrow lands
-      // on the note's own inlay row — not the code line below it.
-      val renderer = NoteInlayRenderer(handoff, isCollapsed, maxCols, NoteGutterIconRenderer(handoff, isCollapsed))
-      editor.inlayModel.addBlockElement(offset, false, true, 0, renderer)?.let { inlays.add(it) }
+      addNoteInlay(editor, editorPath, lineCount, handoff)
     }
+    ring.references().forEach { addNoteInlay(editor, editorPath, lineCount, it) }
     // Inlays created before the editor is laid out measure against a stale (often too-small) width, so
     // their height can be wrong — leaving blank space after the note until something forces a re-measure.
     // Re-measure once on the next EDT cycle, when the viewport width is real.
@@ -108,6 +101,19 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     if (fresh.isNotEmpty()) ApplicationManager.getApplication().invokeLater {
       if (!project.isDisposed) fresh.forEach { if (it.isValid) it.update() }
     }
+  }
+
+  /** Add one note inlay for [handoff] above its line in [editor], if the note is set and the file matches. */
+  private fun addNoteInlay(editor: Editor, editorPath: String, lineCount: Int, handoff: AvecMoiRingService.Handoff) {
+    if (handoff.note.isBlank()) return
+    if (AvecMoiNavigation.resolveFile(project, handoff.file)?.path != editorPath) return
+    val offset = editor.document.getLineStartOffset((handoff.line - 1).coerceIn(0, lineCount - 1))
+    val isCollapsed = handoff in collapsed
+    val maxCols = project.service<AvecMoiSettingsService>().noteWrapMaxColumns
+    // The renderer carries its own gutter chevron (calcGutterIconRenderer), so the fold arrow lands on
+    // the note's own inlay row — not the code line below it.
+    val renderer = NoteInlayRenderer(handoff, isCollapsed, maxCols, NoteGutterIconRenderer(handoff, isCollapsed))
+    editor.inlayModel.addBlockElement(offset, false, true, 0, renderer)?.let { inlays.add(it) }
   }
 
   /** Fold/unfold [handoff]'s note (from its gutter chevron). Transient; just re-renders. */
@@ -221,9 +227,18 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val editor = inlay.editor
       val g2 = g as Graphics2D
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-      val key = if (handoff.done) AvecMoiColors.NOTE_INLAY_DONE else AvecMoiColors.NOTE_INLAY
+      // Amber todo, green done, blue "info" for a review (feedback) or reference (bookmark).
+      val key = when {
+        handoff.done -> AvecMoiColors.NOTE_INLAY_DONE
+        handoff.kind == HandoffKind.TODO -> AvecMoiColors.NOTE_INLAY
+        else -> AvecMoiColors.NOTE_INLAY_INFO
+      }
       val attrs = editor.colorsScheme.getAttributes(key)
-      val fg = attrs?.foregroundColor ?: if (handoff.done) NOTE_FG_DONE_FALLBACK else NOTE_FG_FALLBACK
+      val fg = attrs?.foregroundColor ?: when {
+        handoff.done -> NOTE_FG_DONE_FALLBACK
+        handoff.kind == HandoffKind.TODO -> NOTE_FG_FALLBACK
+        else -> NOTE_FG_INFO_FALLBACK
+      }
       val lines = displayLines(inlay)
       val lineHeight = editor.lineHeight
 
@@ -247,6 +262,7 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       // todo = the ignored / non-project amber, done = the added green.
       private val NOTE_FG_FALLBACK = JBColor(Color(0x8C, 0x4F, 0x00), Color(0xD6, 0x9A, 0x6B))
       private val NOTE_FG_DONE_FALLBACK = JBColor(Color(0x06, 0x7D, 0x17), Color(0x73, 0xBD, 0x79))
+      private val NOTE_FG_INFO_FALLBACK = JBColor(Color(0x00, 0x33, 0xB3), Color(0x70, 0xAE, 0xFF))
 
       // The avec-moi plugin icon (40x40) scaled down to a marker size for the inlay.
       private val ICON: Icon = IconLoader.getIcon("/META-INF/pluginIcon.svg", NoteInlayRenderer::class.java).let {

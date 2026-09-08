@@ -16,4 +16,7 @@ object AvecMoiColors {
 
   /** A completed handoff note (the human implemented it and the agent marked it done). */
   val NOTE_INLAY_DONE: TextAttributesKey = TextAttributesKey.createTextAttributesKey("AVEC_MOI_NOTE_INLAY_DONE")
+
+  /** Info note — a review item (feedback to act on) or a reference bookmark. Blue, echoing a file color. */
+  val NOTE_INLAY_INFO: TextAttributesKey = TextAttributesKey.createTextAttributesKey("AVEC_MOI_NOTE_INLAY_INFO")
 }

@@ -19,6 +19,31 @@ fun interface AvecMoiRingListener {
 }
 
 /**
+ * What a handoff IS.
+ * - [TODO]: a spot for the human to implement (the default).
+ * - [REVIEW]: review feedback for the human to act on — also a work item (done-able, counted,
+ *   stepped through), just flagged as feedback rather than fresh implementation.
+ * - [REFERENCE]: a bookmark/context pointer — "look at this while you work". NOT a work item: its own
+ *   list + index namespace + tree folder, no done-state, not counted, not stepped through.
+ *
+ * TODO and REVIEW live in the WORK list (one namespace); REFERENCE lives in its own.
+ */
+enum class HandoffKind(val label: String) {
+  TODO("To do"),
+  REVIEW("Review"),
+  REFERENCE("Reference");
+
+  /** References are the odd one out — a separate namespace, not a completable work item. */
+  val isReference: Boolean get() = this == REFERENCE
+
+  companion object {
+    /** Parse an agent-supplied kind, case-insensitively; unknown → [TODO]. */
+    fun fromWire(value: String?): HandoffKind =
+      entries.firstOrNull { it.name.equals(value?.trim(), ignoreCase = true) } ?: TODO
+  }
+}
+
+/**
  * Per-project store of avec-moi sessions. A session is a named container of handoffs; one session is
  * "active" (the one navigation and handoff tools operate on), the rest are open or historical.
  *
@@ -33,13 +58,14 @@ fun interface AvecMoiRingListener {
 class AvecMoiRingService(private val project: Project) :
   PersistentStateComponent<AvecMoiRingService.PersistedState>, Disposable {
 
-  data class HandoffSpec(val file: String, val line: Int, val note: String)
+  data class HandoffSpec(val file: String, val line: Int, val note: String, val kind: HandoffKind = HandoffKind.TODO)
 
   class Handoff(
     val file: String,
     var note: String,
     var marker: RangeMarker?,
     private val fallbackLine: Int,
+    val kind: HandoffKind = HandoffKind.TODO,
   ) {
     var done: Boolean = false
 
@@ -53,8 +79,12 @@ class AvecMoiRingService(private val project: Project) :
 
   class Session(val id: String, var name: String, val branch: String?) {
     var historical: Boolean = false
-    val handoffs = mutableListOf<Handoff>()
-    var cursor: Int = -1
+    val handoffs = mutableListOf<Handoff>() // work items: TODO + REVIEW (one index namespace)
+    val references = mutableListOf<Handoff>() // REFERENCE bookmarks (their own index namespace)
+    var cursor: Int = -1 // into handoffs (work); references aren't navigated
+
+    /** The work list or the references list, per [reference]. */
+    fun list(reference: Boolean): MutableList<Handoff> = if (reference) references else handoffs
   }
 
   private val sessions = mutableListOf<Session>()
@@ -131,7 +161,7 @@ class AvecMoiRingService(private val project: Project) :
   fun deleteSession(id: String): Boolean {
     val ok = synchronized(this) {
       val s = sessions.firstOrNull { it.id == id } ?: return@synchronized false
-      s.handoffs.forEach { it.marker?.dispose() }
+      (s.handoffs + s.references).forEach { it.marker?.dispose() }
       sessions.remove(s)
       // A deleted session can't remain the active one; fall back to another open session (or none).
       if (activeId == id) activeId = sessions.firstOrNull { !it.historical }?.id
@@ -156,24 +186,28 @@ class AvecMoiRingService(private val project: Project) :
 
   // --- ring ops (operate on the ACTIVE session) -------------------------------------------------
 
+  /** Replace BOTH the work list and the references, partitioning [specs] by kind. */
   fun set(specs: List<HandoffSpec>) {
     val built = buildHandoffs(specs)
     synchronized(this) {
       val s = ensureActiveLocked()
-      s.handoffs.forEach { it.marker?.dispose() }
+      (s.handoffs + s.references).forEach { it.marker?.dispose() }
       s.handoffs.clear()
-      s.handoffs.addAll(built)
+      s.references.clear()
+      built.forEach { s.list(it.kind.isReference).add(it) }
       s.cursor = -1
     }
     changed()
   }
 
+  /** Append [spec] to its namespace (work vs references, by kind). Returns its 1-based index there. */
   fun add(spec: HandoffSpec, at: Int?): Int {
     val handoff = buildHandoffs(listOf(spec)).first()
     val index = synchronized(this) {
       val s = ensureActiveLocked()
-      val pos = at?.coerceIn(0, s.handoffs.size) ?: s.handoffs.size
-      s.handoffs.add(pos, handoff)
+      val target = s.list(handoff.kind.isReference)
+      val pos = at?.coerceIn(0, target.size) ?: target.size
+      target.add(pos, handoff)
       pos
     }
     changed()
@@ -184,19 +218,22 @@ class AvecMoiRingService(private val project: Project) :
    * Edit an existing handoff in place, preserving its position and done-state. Only non-null fields
    * change. If [file] or [line] changes, the RangeMarker is re-anchored; a note-only edit keeps it.
    */
-  fun update(index: Int, note: String?, file: String?, line: Int?): Boolean {
+  fun update(index: Int, note: String?, file: String?, line: Int?, reference: Boolean = false): Boolean {
     val ok = synchronized(this) {
       val s = activeLocked() ?: return@synchronized false
-      val old = s.handoffs.getOrNull(index) ?: return@synchronized false
+      val target = s.list(reference)
+      val old = target.getOrNull(index) ?: return@synchronized false
       // old.line reads the marker's document, so take it under a read lock (we're off the EDT).
       val oldLine = runReadActionBlocking { old.line }
       val fileChanged = file != null && file != old.file
       val lineChanged = line != null && line != oldLine
       if (fileChanged || lineChanged) {
         old.marker?.dispose()
-        val rebuilt = buildHandoffs(listOf(HandoffSpec(file ?: old.file, line ?: oldLine, note ?: old.note))).first()
+        val rebuilt = buildHandoffs(
+          listOf(HandoffSpec(file ?: old.file, line ?: oldLine, note ?: old.note, old.kind)),
+        ).first()
         rebuilt.done = old.done
-        s.handoffs[index] = rebuilt
+        target[index] = rebuilt
       } else if (note != null) {
         old.note = note
       }
@@ -217,25 +254,30 @@ class AvecMoiRingService(private val project: Project) :
     return ok
   }
 
-  fun remove(index: Int): Boolean {
+  fun remove(index: Int, reference: Boolean = false): Boolean {
     val ok = synchronized(this) {
       val s = activeLocked() ?: return@synchronized false
-      if (index !in s.handoffs.indices) return@synchronized false
-      s.handoffs.removeAt(index).marker?.dispose()
-      // Keep the cursor on the same logical handoff: removing one *before* it shifts it left by one.
-      if (index < s.cursor) s.cursor--
-      if (s.cursor >= s.handoffs.size) s.cursor = s.handoffs.size - 1
+      val target = s.list(reference)
+      if (index !in target.indices) return@synchronized false
+      target.removeAt(index).marker?.dispose()
+      if (!reference) {
+        // Keep the cursor on the same logical handoff: removing one *before* it shifts it left by one.
+        if (index < s.cursor) s.cursor--
+        if (s.cursor >= s.handoffs.size) s.cursor = s.handoffs.size - 1
+      }
       true
     }
     if (ok) changed()
     return ok
   }
 
+  /** Clear BOTH the work list and the references for the active session. */
   fun clear() {
     synchronized(this) {
       val s = activeLocked() ?: return@synchronized
-      s.handoffs.forEach { it.marker?.dispose() }
+      (s.handoffs + s.references).forEach { it.marker?.dispose() }
       s.handoffs.clear()
+      s.references.clear()
       s.cursor = -1
     }
     changed()
@@ -245,7 +287,11 @@ class AvecMoiRingService(private val project: Project) :
 
   @Synchronized fun size(): Int = activeLocked()?.handoffs?.size ?: 0
 
+  /** The work handoffs (to-dos + reviews) of the active session. */
   @Synchronized fun all(): List<Handoff> = activeLocked()?.handoffs?.toList() ?: emptyList()
+
+  /** The reference bookmarks of the active session (their own namespace). */
+  @Synchronized fun references(): List<Handoff> = activeLocked()?.references?.toList() ?: emptyList()
 
   @Synchronized fun cursorIndex(): Int = activeLocked()?.cursor ?: -1
 
@@ -256,8 +302,9 @@ class AvecMoiRingService(private val project: Project) :
   fun prev(): Handoff? = activeLocked()?.let { advance(it, dir = -1) }
 
   /**
-   * Move the cursor to the next (dir = +1) or previous (dir = -1) NOT-done handoff, wrapping around.
-   * "Next" means the next thing left to do, so completed handoffs are skipped. If every handoff is
+   * Move the cursor to the next (dir = +1) or previous (dir = -1) not-done handoff, wrapping around.
+   * "Next" means the next thing left to do, so completed handoffs are skipped. (The work list holds
+   * only to-dos and reviews; references are a separate list and never appear here.) If everything is
    * done, fall back to a plain one-step move so navigation still works. Returns the landed handoff.
    */
   private fun advance(s: Session, dir: Int): Handoff? {
@@ -284,7 +331,7 @@ class AvecMoiRingService(private val project: Project) :
 
   private fun buildHandoffs(specs: List<HandoffSpec>): List<Handoff> =
     runReadActionBlocking {
-      specs.map { spec -> Handoff(spec.file, spec.note, createMarker(spec.file, spec.line), spec.line) }
+      specs.map { spec -> Handoff(spec.file, spec.note, createMarker(spec.file, spec.line), spec.line, spec.kind) }
     }
 
   private fun createMarker(file: String, line1Based: Int): RangeMarker? {
@@ -312,6 +359,9 @@ class AvecMoiRingService(private val project: Project) :
 
     @get:XCollection
     var handoffs: MutableList<HandoffState> = mutableListOf()
+
+    @get:XCollection
+    var references: MutableList<HandoffState> = mutableListOf()
   }
 
   class HandoffState {
@@ -319,6 +369,7 @@ class AvecMoiRingService(private val project: Project) :
     var line: Int = 1
     var note: String = ""
     var done: Boolean = false
+    var kind: HandoffKind = HandoffKind.TODO
   }
 
   override fun getState(): PersistedState {
@@ -332,14 +383,15 @@ class AvecMoiRingService(private val project: Project) :
         ss.name = s.name
         ss.branch = s.branch
         ss.historical = s.historical
-        for (h in s.handoffs) {
-          val hs = HandoffState()
-          hs.file = h.file
-          hs.line = runReadActionBlocking { h.line }
-          hs.note = h.note
-          hs.done = h.done
-          ss.handoffs.add(hs)
+        fun persist(h: Handoff) = HandoffState().also {
+          it.file = h.file
+          it.line = runReadActionBlocking { h.line }
+          it.note = h.note
+          it.done = h.done
+          it.kind = h.kind
         }
+        s.handoffs.forEach { ss.handoffs.add(persist(it)) }
+        s.references.forEach { ss.references.add(persist(it)) }
         st.sessions.add(ss)
       }
     }
@@ -355,11 +407,9 @@ class AvecMoiRingService(private val project: Project) :
       for (ss in state.sessions) {
         val s = Session(ss.id, ss.name, ss.branch)
         s.historical = ss.historical
-        for (hs in ss.handoffs) {
-          val h = Handoff(hs.file, hs.note, null, hs.line)
-          h.done = hs.done
-          s.handoffs.add(h)
-        }
+        fun restore(hs: HandoffState) = Handoff(hs.file, hs.note, null, hs.line, hs.kind).also { it.done = hs.done }
+        ss.handoffs.forEach { s.handoffs.add(restore(it)) }
+        ss.references.forEach { s.references.add(restore(it)) }
         sessions.add(s)
       }
     }
@@ -368,7 +418,7 @@ class AvecMoiRingService(private val project: Project) :
   /** Create RangeMarkers for loaded handoffs (documents may not be ready at loadState time). */
   fun materializeMarkers() {
     synchronized(this) {
-      for (s in sessions) for (h in s.handoffs) {
+      for (s in sessions) for (h in s.handoffs + s.references) {
         if (h.marker?.isValid != true) {
           h.marker = runReadActionBlocking { createMarker(h.file, h.line) }
         }
@@ -379,7 +429,7 @@ class AvecMoiRingService(private val project: Project) :
 
   override fun dispose() {
     synchronized(this) {
-      sessions.forEach { s -> s.handoffs.forEach { it.marker?.dispose() } }
+      sessions.forEach { s -> (s.handoffs + s.references).forEach { it.marker?.dispose() } }
       sessions.clear()
     }
   }

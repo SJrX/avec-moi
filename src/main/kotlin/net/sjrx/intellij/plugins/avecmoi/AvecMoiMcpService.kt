@@ -274,7 +274,10 @@ class AvecMoiMcpService : Disposable {
       tool(
         "register_handoffs",
         "Register the spots where you left work for the human to implement, so the IDE can navigate " +
-          "them. Call after writing compiling stubs. Replaces any previously registered handoffs.",
+          "them. Call after writing compiling stubs. Replaces any previously registered handoffs AND " +
+          "references. Each item has a kind: 'todo' (implement here), 'review' (review feedback to act " +
+          "on — also a work item), or 'reference' (a bookmark to context worth keeping in view; a " +
+          "separate list, not a work item).",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
         "handoffs" to buildJsonObject {
           put("type", "array")
@@ -292,9 +295,17 @@ class AvecMoiMcpService : Disposable {
               }
               putJsonObject("note") {
                 put("type", "string")
-                put("description", "What the human should implement here. Use real newlines and blank " +
-                  "lines for structure, but do NOT hard-wrap at a fixed column — it's a multi-line inlay " +
-                  "above the code and the IDE soft-wraps long lines to the reader's width for them.")
+                put("description", "What the human should implement here (for a to-do), or why this spot " +
+                  "matters (for a reference). Use real newlines and blank lines for structure, but do NOT " +
+                  "hard-wrap at a fixed column — it's a multi-line inlay above the code and the IDE " +
+                  "soft-wraps long lines to the reader's width for them.")
+              }
+              putJsonObject("kind") {
+                put("type", "string")
+                putJsonArray("enum") { add("todo"); add("review"); add("reference") }
+                put("description", "'todo' (default) = a spot to implement; 'review' = review feedback to " +
+                  "act on (also a to-do, done-able, stepped through); 'reference' = a bookmark to context " +
+                  "to keep in view (separate list, not counted, not stepped through, can't be marked done).")
               }
             }
             putJsonArray("required") { add("file"); add("note") }
@@ -335,6 +346,12 @@ class AvecMoiMcpService : Disposable {
             putJsonObject("position") {
               put("type", "integer"); put("description", "1-based position to insert at; default appends to the end.")
             }
+            putJsonObject("kind") {
+              put("type", "string")
+              putJsonArray("enum") { add("todo"); add("review"); add("reference") }
+              put("description", "'todo' (default) = a spot to implement; 'review' = review feedback (also " +
+                "a to-do); 'reference' = a bookmark to context (separate list, not a work item).")
+            }
             putJsonObject("createFileIfMissing") {
               put("type", "boolean")
               put("description", "If true, create the file (and parent dirs) if it doesn't exist. Default false.")
@@ -359,7 +376,12 @@ class AvecMoiMcpService : Disposable {
               put("type", "string"); put("description", "Absolute path inside the target project (e.g. your cwd).")
             }
             putJsonObject("handoff") {
-              put("type", "integer"); put("description", "1-based handoff number (as shown by list_handoffs).")
+              put("type", "integer"); put("description", "1-based number in its namespace, as shown by list_handoffs.")
+            }
+            putJsonObject("reference") {
+              put("type", "boolean")
+              put("description", "If true, the number targets the REFERENCES namespace (list_handoffs' " +
+                "references[]) instead of the work handoffs. Default false.")
             }
             putJsonObject("note") {
               put("type", "string")
@@ -399,9 +421,10 @@ class AvecMoiMcpService : Disposable {
       tool(
         "list_handoffs",
         "List the handoffs currently registered for a project — call after a context reset/resume " +
-          "to recover state before re-registering. Returns JSON: {project, handoffs:[{handoff (the " +
-          "1-based number for mark_handoff_done/update_handoff/remove_handoff), done, file, line, " +
-          "note, fileExists}]}. fileExists=false is a PROBLEM: the handoff points at a file that isn't " +
+          "to recover state before re-registering. Returns JSON: {project, handoffs:[{handoff (1-based " +
+          "number for mark_handoff_done/update_handoff/remove_handoff), kind ('todo'|'review'), done, " +
+          "file, line, note, fileExists}], references:[{reference (1-based number — pass with " +
+          "reference:true to update/remove_handoff), file, line, note, fileExists}]}. fileExists=false is a PROBLEM: the handoff points at a file that isn't " +
           "on disk, so the human can't act on it (a wrong path, scaffolding you haven't written yet, or " +
           "a file that was deleted since) — fix it with update_handoff, or createFileIfMissing if you " +
           "meant to create it. Don't leave it broken.",
@@ -443,8 +466,13 @@ class AvecMoiMcpService : Disposable {
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
         "handoff" to buildJsonObject {
           put("type", "integer")
-          put("description", "1-based handoff number (as shown by list_handoffs).")
+          put("description", "1-based number in its namespace, as shown by list_handoffs.")
         },
+        "reference" to buildJsonObject {
+          put("type", "boolean")
+          put("description", "If true, remove from the REFERENCES namespace instead of the work handoffs. Default false.")
+        },
+        optional = setOf("reference"),
       )
       tool(
         "create_session",
@@ -623,15 +651,18 @@ class AvecMoiMcpService : Disposable {
       val file = o["file"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
       val line = o["line"]?.jsonPrimitive?.intOrNull ?: 1
       val note = o["note"]?.jsonPrimitive?.contentOrNull ?: ""
-      AvecMoiRingService.HandoffSpec(file, line, note)
+      val kind = HandoffKind.fromWire(o["kind"]?.jsonPrimitive?.contentOrNull)
+      AvecMoiRingService.HandoffSpec(file, line, note, kind)
     }
     // Create files up front (if asked) BEFORE set(), so the markers anchor to real documents.
     val created = if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, list.map { it.file })
     } else emptyList()
     project.service<AvecMoiRingService>().set(list)
-    val base = "Registered ${list.size} handoff(s) for project '${project.name}'. " +
-      "The human can now step through them in the IDE." +
+    val refs = list.count { it.kind.isReference }
+    val work = list.size - refs
+    val base = "Registered $work handoff(s)" + (if (refs > 0) " and $refs reference(s)" else "") +
+      " for project '${project.name}'. The human can now step through them in the IDE." +
       (if (created.isNotEmpty()) createdFilesNote(created) else "")
     val missing = unresolvedFiles(project, list.map { it.file })
     return if (missing.isEmpty()) textContent(base, isError = false)
@@ -647,12 +678,13 @@ class AvecMoiMcpService : Disposable {
     val note = args?.get("note")?.jsonPrimitive?.contentOrNull
       ?: return textContent("Missing 'note'.", isError = true)
     val line = args?.get("line")?.jsonPrimitive?.intOrNull ?: 1
+    val kind = HandoffKind.fromWire(args?.get("kind")?.jsonPrimitive?.contentOrNull)
     val at = args?.get("position")?.jsonPrimitive?.intOrNull?.let { it - 1 } // 1-based -> 0-based; null appends
     val created = if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, listOf(file))
     } else emptyList()
-    val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note), at)
-    val base = "Added handoff #$n in '${project.name}'." +
+    val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note, kind), at)
+    val base = (if (kind.isReference) "Added reference #$n" else "Added handoff #$n") + " in '${project.name}'." +
       (if (created.isNotEmpty()) createdFilesNote(created) else "")
     val missing = unresolvedFiles(project, listOf(file))
     return if (missing.isEmpty()) textContent(base, isError = false)
@@ -665,6 +697,8 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val n = args?.get("handoff")?.jsonPrimitive?.intOrNull
       ?: return textContent("Missing 'handoff' number.", isError = true)
+    val reference = args["reference"]?.jsonPrimitive?.booleanOrNull ?: false
+    val label = if (reference) "reference" else "handoff"
     val note = args["note"]?.jsonPrimitive?.contentOrNull
     val file = args["file"]?.jsonPrimitive?.contentOrNull
     val line = args["line"]?.jsonPrimitive?.intOrNull
@@ -674,14 +708,14 @@ class AvecMoiMcpService : Disposable {
     val created = if (file != null && args["createFileIfMissing"]?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, listOf(file))
     } else emptyList()
-    return if (project.service<AvecMoiRingService>().update(n - 1, note, file, line)) {
-      val base = "Updated handoff #$n in '${project.name}'." +
+    return if (project.service<AvecMoiRingService>().update(n - 1, note, file, line, reference)) {
+      val base = "Updated $label #$n in '${project.name}'." +
         (if (created.isNotEmpty()) createdFilesNote(created) else "")
       val missing = if (file != null) unresolvedFiles(project, listOf(file)) else emptyList()
       if (missing.isEmpty()) textContent(base, isError = false)
       else textContent(base + missingFilesWarning(project, missing), isError = true)
     } else {
-      textContent("No handoff #$n in '${project.name}'.", isError = true)
+      textContent("No $label #$n in '${project.name}'.", isError = true)
     }
   }
 
@@ -743,8 +777,21 @@ class AvecMoiMcpService : Disposable {
         putJsonArray("handoffs") {
           ring.all().forEachIndexed { i, h ->
             addJsonObject {
-              put("handoff", i + 1) // 1-based, as passed to mark_handoff_done / update_handoff / remove_handoff
+              put("handoff", i + 1) // 1-based, for mark_handoff_done / update_handoff / remove_handoff
+              put("kind", h.kind.name.lowercase()) // "todo" | "review"
               put("done", h.done)
+              put("file", h.file)
+              put("line", h.line)
+              put("note", h.note)
+              put("fileExists", AvecMoiNavigation.resolveFile(project, h.file) != null)
+            }
+          }
+        }
+        putJsonArray("references") {
+          ring.references().forEachIndexed { i, h ->
+            addJsonObject {
+              // Separate namespace: pass this number with reference:true to update_handoff/remove_handoff.
+              put("reference", i + 1)
               put("file", h.file)
               put("line", h.line)
               put("note", h.note)
@@ -771,7 +818,8 @@ class AvecMoiMcpService : Disposable {
     val n = args?.get("handoff")?.jsonPrimitive?.intOrNull
       ?: return textContent("Missing 'handoff' number.", isError = true)
     val done = args["done"]?.jsonPrimitive?.booleanOrNull ?: true
-    return if (project.service<AvecMoiRingService>().markDone(n - 1, done)) {
+    val ring = project.service<AvecMoiRingService>()
+    return if (ring.markDone(n - 1, done)) {
       val what = if (done) "done" else "not done"
       textContent("Marked handoff #$n $what in '${project.name}'.", isError = false)
     } else {
@@ -785,10 +833,12 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val n = args?.get("handoff")?.jsonPrimitive?.intOrNull
       ?: return textContent("Missing 'handoff' number.", isError = true)
-    return if (project.service<AvecMoiRingService>().remove(n - 1)) {
-      textContent("Removed handoff #$n from '${project.name}'.", isError = false)
+    val reference = args["reference"]?.jsonPrimitive?.booleanOrNull ?: false
+    val label = if (reference) "reference" else "handoff"
+    return if (project.service<AvecMoiRingService>().remove(n - 1, reference)) {
+      textContent("Removed $label #$n from '${project.name}'.", isError = false)
     } else {
-      textContent("No handoff #$n in '${project.name}'.", isError = true)
+      textContent("No $label #$n in '${project.name}'.", isError = true)
     }
   }
 
@@ -1040,6 +1090,21 @@ class AvecMoiMcpService : Disposable {
       - Call `register_handoffs` with the (file, line, note) spots where the human writes the real
         logic. Hand off the load-bearing, instructive parts — the actual thinking — and stub the
         rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
+      - Handoffs have a kind:
+          - 'todo' (default): a spot to implement.
+          - 'review': review feedback for the human to act on — still a work item (a to-do; it's
+            counted, stepped through, and marked done). Use it for "look at / fix this," distinct from
+            fresh implementation.
+          - 'reference': a bookmark to context worth keeping in view (the pattern to mirror, the
+            interface being implemented, the call site that will use their code). References are NOT
+            work — they live in their OWN list and index namespace (list_handoffs' references[]),
+            aren't counted, aren't stepped through, and can't be marked done. To edit/remove one, pass
+            reference:true with its reference number. Point them at genuinely-helpful context, not
+            everything.
+      - Closing out reviews: when you verify a completed implementation and it resolves earlier review
+        feedback, mark those review items done too — don't leave addressed feedback sitting as open
+        work. (E.g. two 'review' items, then a 'todo'; when the human finishes the todo and you verify
+        it addresses that feedback, mark all three done.)
       - To add a spot mid-flight, use `add_handoff` (appends one, preserving existing progress);
         register_handoffs replaces the whole set and resets done-state.
       - When a handoff is for a NEW file — one you want the human to fill in but haven't written to
