@@ -275,9 +275,9 @@ class AvecMoiMcpService : Disposable {
         "register_handoffs",
         "Register the spots where you left work for the human to implement, so the IDE can navigate " +
           "them. Call after writing compiling stubs. Replaces any previously registered handoffs AND " +
-          "references. Each item has a kind: 'todo' (implement here), 'review' (review feedback to act " +
-          "on — also a work item), or 'reference' (a bookmark to context worth keeping in view; a " +
-          "separate list, not a work item).",
+          "references. Each item has a kind: 'todo' (implement here), 'read' (a step to read/understand " +
+          "specific code as context, e.g. an implementation to mirror — also a work item), or " +
+          "'reference' (a session-long bookmark to handy code; a separate list, not a work item).",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
         "handoffs" to buildJsonObject {
           put("type", "array")
@@ -302,10 +302,11 @@ class AvecMoiMcpService : Disposable {
               }
               putJsonObject("kind") {
                 put("type", "string")
-                putJsonArray("enum") { add("todo"); add("review"); add("reference") }
-                put("description", "'todo' (default) = a spot to implement; 'review' = review feedback to " +
-                  "act on (also a to-do, done-able, stepped through); 'reference' = a bookmark to context " +
-                  "to keep in view (separate list, not counted, not stepped through, can't be marked done).")
+                putJsonArray("enum") { add("todo"); add("read"); add("reference") }
+                put("description", "'todo' (default) = a spot to implement; 'read' = a step to " +
+                  "read/understand specific code as context (e.g. an implementation to mirror — a to-do, " +
+                  "done-able, stepped through); 'reference' = a session-long bookmark (separate list, not " +
+                  "counted, not stepped through, can't be marked done).")
               }
             }
             putJsonArray("required") { add("file"); add("note") }
@@ -348,9 +349,9 @@ class AvecMoiMcpService : Disposable {
             }
             putJsonObject("kind") {
               put("type", "string")
-              putJsonArray("enum") { add("todo"); add("review"); add("reference") }
-              put("description", "'todo' (default) = a spot to implement; 'review' = review feedback (also " +
-                "a to-do); 'reference' = a bookmark to context (separate list, not a work item).")
+              putJsonArray("enum") { add("todo"); add("read"); add("reference") }
+              put("description", "'todo' (default) = a spot to implement; 'read' = a step to read/" +
+                "understand code as context (also a to-do); 'reference' = a session bookmark (separate list).")
             }
             putJsonObject("createFileIfMissing") {
               put("type", "boolean")
@@ -422,7 +423,7 @@ class AvecMoiMcpService : Disposable {
         "list_handoffs",
         "List the handoffs currently registered for a project — call after a context reset/resume " +
           "to recover state before re-registering. Returns JSON: {project, handoffs:[{handoff (1-based " +
-          "number for mark_handoff_done/update_handoff/remove_handoff), kind ('todo'|'review'), done, " +
+          "number for mark_handoff_done/update_handoff/remove_handoff), kind ('todo'|'read'), done, " +
           "file, line, note, fileExists}], references:[{reference (1-based number — pass with " +
           "reference:true to update/remove_handoff), file, line, note, fileExists}]}. fileExists=false is a PROBLEM: the handoff points at a file that isn't " +
           "on disk, so the human can't act on it (a wrong path, scaffolding you haven't written yet, or " +
@@ -778,7 +779,7 @@ class AvecMoiMcpService : Disposable {
           ring.all().forEachIndexed { i, h ->
             addJsonObject {
               put("handoff", i + 1) // 1-based, for mark_handoff_done / update_handoff / remove_handoff
-              put("kind", h.kind.name.lowercase()) // "todo" | "review"
+              put("kind", h.kind.name.lowercase()) // "todo" | "read"
               put("done", h.done)
               put("file", h.file)
               put("line", h.line)
@@ -1092,19 +1093,18 @@ class AvecMoiMcpService : Disposable {
         rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
       - Handoffs have a kind:
           - 'todo' (default): a spot to implement.
-          - 'review': review feedback for the human to act on — still a work item (a to-do; it's
-            counted, stepped through, and marked done). Use it for "look at / fix this," distinct from
-            fresh implementation.
-          - 'reference': a bookmark to context worth keeping in view (the pattern to mirror, the
-            interface being implemented, the call site that will use their code). References are NOT
-            work — they live in their OWN list and index namespace (list_handoffs' references[]),
-            aren't counted, aren't stepped through, and can't be marked done. To edit/remove one, pass
-            reference:true with its reference number. Point them at genuinely-helpful context, not
+          - 'read': a sequenced step to read/understand specific code the human needs as context BEFORE
+            a to-do — e.g. an existing implementation they'll mirror, or the interface they're
+            implementing. Still a work item (a to-do; counted, stepped through, marked done); its output
+            is understanding, not code. Use it when they genuinely need to study something first.
+          - 'reference': an unordered, session-long bookmark to code that's handy to jump to whenever
+            (not tied to one task). NOT work — its OWN list and index namespace (list_handoffs'
+            references[]), not counted, not stepped through, can't be marked done. To edit/remove one,
+            pass reference:true with its reference number. Point them at genuinely-helpful spots, not
             everything.
-      - Closing out reviews: when you verify a completed implementation and it resolves earlier review
-        feedback, mark those review items done too — don't leave addressed feedback sitting as open
-        work. (E.g. two 'review' items, then a 'todo'; when the human finishes the todo and you verify
-        it addresses that feedback, mark all three done.)
+      - Closing out reads: a 'read' step is usually a prerequisite for a later to-do. When the human
+        finishes that to-do and you verify it (so they've clearly absorbed the context), mark the
+        preceding 'read' step(s) done too — don't leave a satisfied prerequisite sitting as open work.
       - To add a spot mid-flight, use `add_handoff` (appends one, preserving existing progress);
         register_handoffs replaces the whole set and resets done-state.
       - When a handoff is for a NEW file — one you want the human to fill in but haven't written to

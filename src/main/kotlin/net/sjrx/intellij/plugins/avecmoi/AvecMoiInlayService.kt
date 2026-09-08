@@ -227,7 +227,7 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       val editor = inlay.editor
       val g2 = g as Graphics2D
       g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-      // Amber todo, green done, blue "info" for a review (feedback) or reference (bookmark).
+      // Amber todo, green done, blue "info" for a read (context) or reference (bookmark).
       val key = when {
         handoff.done -> AvecMoiColors.NOTE_INLAY_DONE
         handoff.kind == HandoffKind.TODO -> AvecMoiColors.NOTE_INLAY

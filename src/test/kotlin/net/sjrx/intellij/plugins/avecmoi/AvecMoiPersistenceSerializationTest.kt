@@ -35,12 +35,12 @@ class AvecMoiPersistenceSerializationTest : AbstractAvecMoiTest() {
   }
 
   fun testHandoffKindsAndReferencesSurviveSerialization() {
-    // Fixture Setup — a to-do, a review (work), and a reference (own namespace)
+    // Fixture Setup — a to-do, a read (work), and a reference (own namespace)
     ring.createSession("Feature", null)
     ring.set(
       listOf(
         spec(file = "A.kt", note = "implement"),
-        spec(file = "B.kt", note = "review this").copy(kind = HandoffKind.REVIEW),
+        spec(file = "B.kt", note = "review this").copy(kind = HandoffKind.READ),
         spec(file = "C.kt", note = "context").copy(kind = HandoffKind.REFERENCE),
       ),
     )
@@ -52,7 +52,7 @@ class AvecMoiPersistenceSerializationTest : AbstractAvecMoiTest() {
     // Verification — kinds and the separate reference namespace survive
     assertEquals(listOf("implement", "review this"), reloaded.all().map { it.note })
     assertEquals(HandoffKind.TODO, reloaded.all()[0].kind)
-    assertEquals(HandoffKind.REVIEW, reloaded.all()[1].kind)
+    assertEquals(HandoffKind.READ, reloaded.all()[1].kind)
     assertEquals(listOf("context"), reloaded.references().map { it.note })
     assertEquals(HandoffKind.REFERENCE, reloaded.references()[0].kind)
   }

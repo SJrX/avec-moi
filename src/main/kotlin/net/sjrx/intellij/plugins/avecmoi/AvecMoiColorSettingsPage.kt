@@ -31,7 +31,7 @@ class AvecMoiColorSettingsPage : ColorSettingsPage {
     <keyword>fun</keyword> <fn>getRandomNumber</fn>(): <keyword>Int</keyword> {
         <note>TODO(human): make this actually random.
         I did the imports and the return type — I left you the interesting part.</note>
-        <note_info>REVIEW(human): magic number — pull this out into a named constant.</note_info>
+        <note_info>READ(human): see how FooRepo caches results — mirror that here before you implement.</note_info>
         <keyword>return</keyword> <num>4</num>  <comment>// chosen by fair dice roll. guaranteed to be random.</comment>
     }
     """.trimIndent()
@@ -52,7 +52,7 @@ class AvecMoiColorSettingsPage : ColorSettingsPage {
     private val DESCRIPTORS = arrayOf(
       AttributesDescriptor("Handoff note inlay (todo)", AvecMoiColors.NOTE_INLAY),
       AttributesDescriptor("Handoff note inlay (done)", AvecMoiColors.NOTE_INLAY_DONE),
-      AttributesDescriptor("Handoff note inlay (review / reference)", AvecMoiColors.NOTE_INLAY_INFO),
+      AttributesDescriptor("Handoff note inlay (read / reference)", AvecMoiColors.NOTE_INLAY_INFO),
     )
   }
 }

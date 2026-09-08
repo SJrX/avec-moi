@@ -227,18 +227,18 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     assertTrue(result.isError())
   }
 
-  // --- kinds: to-do / review (work) vs reference (separate namespace) --------------------------
+  // --- kinds: to-do / read (work) vs reference (separate namespace) --------------------------
 
   fun testRegisterPartitionsWorkHandoffsFromReferencesAndReportsBoth() {
     // language=JSON
     val result = callTool("register_handoffs", """
       { "projectPath": "$projectPath", "handoffs": [
         { "file": "A.kt", "note": "implement" },
-        { "file": "B.kt", "note": "look at this feedback", "kind": "review" },
+        { "file": "B.kt", "note": "read FooRepo before implementing", "kind": "read" },
         { "file": "C.kt", "note": "the pattern to mirror", "kind": "reference" } ] }
     """.trimIndent())
     assertTrue(result.contentText(), result.contentText().contains("2 handoff(s) and 1 reference(s)"))
-    assertEquals("to-do + review are work items", 2, ring.all().size)
+    assertEquals("to-do + read are work items", 2, ring.all().size)
     assertEquals("reference is its own namespace", 1, ring.references().size)
   }
 

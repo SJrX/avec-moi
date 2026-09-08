@@ -133,7 +133,7 @@ class AvecMoiRingServiceTest : AbstractAvecMoiTest() {
     assertFalse(handoffs[1].done)
   }
 
-  // --- handoff kinds: to-do + review (work) vs reference (own namespace) ------------------------
+  // --- handoff kinds: to-do + read (work) vs reference (own namespace) ------------------------
 
   private fun ref(note: String) = spec(note = note).copy(kind = HandoffKind.REFERENCE)
 
@@ -141,11 +141,11 @@ class AvecMoiRingServiceTest : AbstractAvecMoiTest() {
     ring.set(
       listOf(
         spec(note = "impl"),
-        spec(note = "review this").copy(kind = HandoffKind.REVIEW),
+        spec(note = "review this").copy(kind = HandoffKind.READ),
         ref("see this"),
       ),
     )
-    assertEquals(listOf("impl", "review this"), ring.all().map { it.note }) // to-do + review are work
+    assertEquals(listOf("impl", "review this"), ring.all().map { it.note }) // to-do + read are work
     assertEquals(listOf("see this"), ring.references().map { it.note })     // reference is separate
   }
 
@@ -165,10 +165,10 @@ class AvecMoiRingServiceTest : AbstractAvecMoiTest() {
   }
 
   fun testNextStepsThroughWorkItemsOnlyNotReferences() {
-    ring.set(listOf(spec(note = "review").copy(kind = HandoffKind.REVIEW), spec(note = "todo"), ref("ctx")))
-    assertEquals("review", ring.next()?.note) // reviews are work, stepped through
+    ring.set(listOf(spec(note = "read this").copy(kind = HandoffKind.READ), spec(note = "todo"), ref("ctx")))
+    assertEquals("read this", ring.next()?.note) // reads are work, stepped through
     assertEquals("todo", ring.next()?.note)
-    assertEquals("wraps within the work list, never landing on a reference", "review", ring.next()?.note)
+    assertEquals("wraps within the work list, never landing on a reference", "read this", ring.next()?.note)
   }
 
   fun testClearEmptiesBothWorkAndReferences() {

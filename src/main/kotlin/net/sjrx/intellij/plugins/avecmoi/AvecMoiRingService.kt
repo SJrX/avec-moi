@@ -21,16 +21,17 @@ fun interface AvecMoiRingListener {
 /**
  * What a handoff IS.
  * - [TODO]: a spot for the human to implement (the default).
- * - [REVIEW]: review feedback for the human to act on — also a work item (done-able, counted,
- *   stepped through), just flagged as feedback rather than fresh implementation.
- * - [REFERENCE]: a bookmark/context pointer — "look at this while you work". NOT a work item: its own
- *   list + index namespace + tree folder, no done-state, not counted, not stepped through.
+ * - [READ]: a sequenced step to read/understand specific code as context — e.g. an implementation to
+ *   mirror before the next to-do. A work item like a to-do (done-able, counted, stepped through),
+ *   just one whose output is understanding rather than code.
+ * - [REFERENCE]: an unordered, session-long bookmark to important code — "handy whenever". NOT a work
+ *   item: its own list + index namespace + tree folder, no done-state, not counted, not stepped.
  *
- * TODO and REVIEW live in the WORK list (one namespace); REFERENCE lives in its own.
+ * TODO and READ live in the WORK list (one namespace); REFERENCE lives in its own.
  */
 enum class HandoffKind(val label: String) {
   TODO("To do"),
-  REVIEW("Review"),
+  READ("Read"),
   REFERENCE("Reference");
 
   /** References are the odd one out — a separate namespace, not a completable work item. */
@@ -79,7 +80,7 @@ class AvecMoiRingService(private val project: Project) :
 
   class Session(val id: String, var name: String, val branch: String?) {
     var historical: Boolean = false
-    val handoffs = mutableListOf<Handoff>() // work items: TODO + REVIEW (one index namespace)
+    val handoffs = mutableListOf<Handoff>() // work items: TODO + READ (one index namespace)
     val references = mutableListOf<Handoff>() // REFERENCE bookmarks (their own index namespace)
     var cursor: Int = -1 // into handoffs (work); references aren't navigated
 
