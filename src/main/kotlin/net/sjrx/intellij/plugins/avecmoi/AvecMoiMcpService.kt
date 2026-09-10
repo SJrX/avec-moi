@@ -1101,7 +1101,7 @@ class AvecMoiMcpService : Disposable {
             whole, boilerplate at the top of the file, or (in C/C++) the header + prototype you created
             for a function they'll implement in the .c/.cpp. Do NOT put a 'read' right next to the to-do
             it supports — if the scaffolding is the very stub they're filling in, they already see it
-            inline and a read there is just noise. Still a work item (a to-do; counted, stepped through,
+            inline and a read there is just noise. These are still work items (a to-do; counted, stepped through,
             marked done); its output is understanding, not code.
           - 'reference': an unordered, session-long bookmark to code that's handy to jump to whenever
             (not tied to one task). NOT work — its OWN list and index namespace (list_handoffs'
@@ -1132,11 +1132,19 @@ class AvecMoiMcpService : Disposable {
         think about it. For a distinct piece of work (or a second agent on this project), call
         `create_session("<name>")` to start a fresh one; `list_sessions` / `switch_session` /
         `rename_session` manage them; `complete_session` moves a finished one to Historical.
-      - Every handoff needs a specific note: what to implement here and why it matters. Use real
-        newlines and blank lines to give it structure — short paragraphs, or a list of steps — but do
-        NOT hard-wrap at a fixed column. The IDE floats the note above the code as a multi-line inlay
-        and soft-wraps long lines to the reader's editor width for them, so a long line is fine; just
-        break it where it reads naturally rather than cramming everything onto one line.
+      - Every handoff needs a specific note: what to implement here and why it matters. Put your
+        guidance in the NOTE, not in the source. Prefer the handoff note over writing explanatory or
+        TODO(human) comments into the code, so the human's file isn't littered with prose they'll have
+        to strip out — the note floats above the line and is never part of the file. (A bare stub that
+        just compiles — Kotlin TODO("..."), Python raise NotImplementedError — is still fine; the point
+        is don't ALSO write paragraphs of guidance into the source.) Keep source comments to what
+        belongs in the code for good.
+      - Keep the note itself current: if later discussion changes what a note should say, you MUST
+        update it with update_handoff. A stale note actively misleads the human — worse than no note.
+      - Format the note with real newlines and blank lines — short paragraphs, or a list of steps — but
+        do NOT hard-wrap at a fixed column. The IDE floats it above the code as a multi-line inlay and
+        soft-wraps long lines to the reader's editor width, so a long line is fine; just break it where
+        it reads naturally rather than cramming everything onto one line.
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
       - The human steps through the handoffs and implements them.
 
