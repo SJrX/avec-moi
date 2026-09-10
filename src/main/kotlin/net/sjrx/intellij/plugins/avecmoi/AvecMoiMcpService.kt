@@ -1144,7 +1144,9 @@ class AvecMoiMcpService : Disposable {
       - Format the note with real newlines and blank lines — short paragraphs, or a list of steps — but
         do NOT hard-wrap at a fixed column. The IDE floats it above the code as a multi-line inlay and
         soft-wraps long lines to the reader's editor width, so a long line is fine; just break it where
-        it reads naturally rather than cramming everything onto one line.
+        it reads naturally rather than cramming everything onto one line. Use ACTUAL line breaks — only
+        escape a newline as far as JSON requires (a single \n in the JSON string). Do NOT double-escape
+        (\\n) or the note will show a literal backslash-n instead of a line break.
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
       - The human steps through the handoffs and implements them.
 
