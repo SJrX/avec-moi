@@ -658,7 +658,7 @@ class AvecMoiMcpService : Disposable {
       AvecMoiRingService.HandoffSpec(file, line, note, kind)
     }
     // Create files up front (if asked) BEFORE set(), so the markers anchor to real documents.
-    val created = if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
+    val created = if (args.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, list.map { it.file })
     } else emptyList()
     project.service<AvecMoiRingService>().set(list)
@@ -678,12 +678,12 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val file = args?.get("file")?.jsonPrimitive?.contentOrNull
       ?: return textContent("Missing 'file'.", isError = true)
-    val note = args?.get("note")?.jsonPrimitive?.contentOrNull
+    val note = args.get("note")?.jsonPrimitive?.contentOrNull
       ?: return textContent("Missing 'note'.", isError = true)
-    val line = args?.get("line")?.jsonPrimitive?.intOrNull ?: 1
-    val kind = HandoffKind.fromWire(args?.get("kind")?.jsonPrimitive?.contentOrNull)
-    val at = args?.get("position")?.jsonPrimitive?.intOrNull?.let { it - 1 } // 1-based -> 0-based; null appends
-    val created = if (args?.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
+    val line = args.get("line")?.jsonPrimitive?.intOrNull ?: 1
+    val kind = HandoffKind.fromWire(args.get("kind")?.jsonPrimitive?.contentOrNull)
+    val at = args.get("position")?.jsonPrimitive?.intOrNull?.let { it - 1 } // 1-based -> 0-based; null appends
+    val created = if (args.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, listOf(file))
     } else emptyList()
     val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note, kind), at)
@@ -728,7 +728,7 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val file = args?.get("file")?.jsonPrimitive?.contentOrNull
       ?: return textContent("Missing 'file'.", isError = true)
-    val line = args?.get("line")?.jsonPrimitive?.intOrNull ?: 1
+    val line = args.get("line")?.jsonPrimitive?.intOrNull ?: 1
     return if (AvecMoiNavigation.openAt(project, file, line)) {
       textContent("Navigating '${project.name}' to $file:$line", isError = false)
     } else {
@@ -910,7 +910,7 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("No open project matches path: $path", isError = true)
     val id = args?.get("session")?.jsonPrimitive?.contentOrNull
       ?: return textContent("Missing 'session' id.", isError = true)
-    val name = args?.get("name")?.jsonPrimitive?.contentOrNull
+    val name = args.get("name")?.jsonPrimitive?.contentOrNull
       ?: return textContent("Missing 'name'.", isError = true)
     return if (project.service<AvecMoiRingService>().renameSession(id, name)) {
       textContent("Renamed session $id to '$name'.", isError = false)
@@ -1069,16 +1069,17 @@ class AvecMoiMcpService : Disposable {
      * gets it with no per-project setup. Guidance, not a rigid workflow: the model decides specifics.
      */
     internal val INSTRUCTIONS = """
-      avec-moi is a collaborative-coding server: you (the agent) design and scaffold, the human
-      implements the load-bearing logic. The point is to keep the human engaged and fluent in
-      their own codebase — "with me," not "for me." Work WITH the human, not around them.
+      avec-moi is a collaborative-coding plugin that provides you the agent, with the ability to interact
+      with the IDE. The raison d'étre of this plugin is to stem the decline of disengagement of coders
+      from the code base. Consequently when using this plugin your main goal is to keep the human engaged 
+      and fluent in their own codebase — "with me," not "for me." Work WITH the human, not for them.
 
       Serve the developer's desired level of engagement for THIS project — which may shift from
       session to session, even task to task. avec-moi exists to serve the developer and their
-      changing whims; it is NOT here to force them to code or toil. Some things they'll want to own
-      fully; others they'll happily hand back to you — when unsure, ask how involved they want to be
-      and hand off more or less accordingly. The goal is to help them enjoy coding and shipping
-      features, staying as sharp and engaged as they choose to be.
+      changing whims; it is NOT here to force them to code, or to achieve normative learning objectives.
+      Some things they'll want to own fully; others they'll happily hand back to you — when unsure, 
+      ask how involved they want to be and hand off more or less accordingly. The goal is to help them enjoy 
+      coding, shipping features, and staying engaged and fluent in the code base.
 
       How to use it:
       - Before starting work in a project, call `get_avecmoi_guidance(projectPath)` to learn how the
@@ -1089,10 +1090,14 @@ class AvecMoiMcpService : Disposable {
         Kotlin `TODO("...")`, Python `raise NotImplementedError`) — so the human implements into
         working scaffolding rather than debugging yours. It need NOT be a fully green build: failing
         tests (including placeholder tests meant to fail until implemented) and linter gripes are
-        fine. The bar is "no syntax errors", not "everything passes".
-      - Call `register_handoffs` with the (file, line, note) spots where the human writes the real
-        logic. Hand off the load-bearing, instructive parts — the actual thinking — and stub the
-        rote yourself (imports, boilerplate, wiring). Resist implementing the interesting part.
+        fine. The bar is "no syntax errors", not "everything passes". Ideally if tasks are broken up 
+        so that individual units can be implemented, then tested is good.
+      - Call `register_handoffs` with the (file, line, note) spots where you feel are the best places
+        for the human to write code in accordance with their goals. _This_ will vary depending on their 
+        goals and familiarity, absent anything else, load bearing parts are good, large amounts of boilerplate
+        are bad, another good candidate are function signatures. Make SURE you are confident that the 
+        human being wants you to implement parts before starting the scaffolding and implementation. In testing,
+        you often erred on the side of implementing too much.
       - Handoffs have a kind:
           - 'todo' (default): a spot to implement.
           - 'read': a sequenced step to read/understand code the human needs as context — an existing
@@ -1116,7 +1121,8 @@ class AvecMoiMcpService : Disposable {
       - When a handoff is for a NEW file — one you want the human to fill in but haven't written to
         disk — pass createFileIfMissing=true on register_handoffs / add_handoff (or update_handoff).
         That creates the (empty) file so the handoff is live from the start, instead of coming back as
-        a broken fileExists=false handoff. It's how you signify "this is a new file."
+        a broken fileExists=false handoff. It's how you signify "this is a new file." 
+          * Typically the paths to handoffs should be relative to where were started.
       - KEEP THE HANDOFFS IN SYNC WITH THE PLAN. A really bad failure mode: you and the human discuss a
         change, you DON'T update the handoffs, and they go implement the now-stale handoffs and waste
         their time. The human trusts what's shown in the IDE. So whenever a discussion changes what a
