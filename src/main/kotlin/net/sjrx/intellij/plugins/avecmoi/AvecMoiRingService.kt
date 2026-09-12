@@ -70,11 +70,15 @@ class AvecMoiRingService(private val project: Project) :
   ) {
     var done: Boolean = false
 
-    /** Current 1-based line, tracking edits via the marker when it's still valid. */
+    /**
+     * Current 1-based line, tracking edits via the marker when it's still valid. Reads the marker's
+     * document, which needs a read action, so the getter self-guards — [runReadActionBlocking] is
+     * reentrant, so callers already inside a read action pay nothing extra.
+     */
     val line: Int
-      get() {
+      get() = runReadActionBlocking {
         val m = marker
-        return if (m != null && m.isValid) m.document.getLineNumber(m.startOffset) + 1 else fallbackLine
+        if (m != null && m.isValid) m.document.getLineNumber(m.startOffset) + 1 else fallbackLine
       }
   }
 

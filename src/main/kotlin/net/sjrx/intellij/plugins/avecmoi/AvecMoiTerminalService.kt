@@ -2,6 +2,8 @@ package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.ControlFlowException
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTab
@@ -11,6 +13,7 @@ import com.intellij.ui.content.Content
 import org.jetbrains.plugins.terminal.TerminalToolWindowFactory
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Per-project state + logic for the "push" channel: which terminal tab avec-moi injects into, and
@@ -73,14 +76,36 @@ class AvecMoiTerminalService(private val project: Project) {
     }
   }
 
-  /** Every terminal tab across both engines, reworked first, de-duped by Content. */
+  /**
+   * Every terminal tab across both engines, reworked first, de-duped by Content. Each engine is
+   * enumerated in isolation: if one throws (API drift between IDE versions, a threading assertion,
+   * a remote-dev/split-mode frontend), we log it and still return whatever the other engine found,
+   * rather than letting one failure zero out terminal detection entirely.
+   */
   private fun targets(): List<Target> {
-    val reworked = TerminalToolWindowTabsManager.getInstance(project).tabs.map { ReworkedTarget(it) }
+    val reworked = try {
+      TerminalToolWindowTabsManager.getInstance(project).tabs.map { ReworkedTarget(it) }
+    } catch (e: Throwable) {
+      if (e is ControlFlowException || e is CancellationException) throw e
+      thisLogger().warn("avec-moi: reworked-terminal enumeration failed; falling back to legacy only", e)
+      emptyList()
+    }
     val seen = reworked.mapTo(HashSet()) { it.content }
-    val legacy = terminalContents()
-      .filter { it !in seen }
-      .mapNotNull { c -> TerminalToolWindowManager.findWidgetByContent(c)?.let { LegacyTarget(c, it) } }
-    return reworked + legacy
+    val legacy = try {
+      terminalContents()
+        .filter { it !in seen }
+        .mapNotNull { c -> TerminalToolWindowManager.findWidgetByContent(c)?.let { LegacyTarget(c, it) } }
+    } catch (e: Throwable) {
+      if (e is ControlFlowException || e is CancellationException) throw e
+      thisLogger().warn("avec-moi: legacy-terminal enumeration failed", e)
+      emptyList()
+    }
+    val all = reworked + legacy
+    val log = thisLogger()
+    if (log.isDebugEnabled) {
+      log.debug("avec-moi terminal detection: reworked=${reworked.size}, legacy=${legacy.size}, names=${all.map { it.name }}")
+    }
+    return all
   }
 
   private fun terminalContents(): List<Content> =

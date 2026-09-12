@@ -5,6 +5,7 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
 import com.intellij.openapi.editor.Editor
@@ -79,13 +80,13 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
   }
 
   /** Must run on the EDT. Rebuilds this editor's note inlays from the ring + current setting. */
-  private fun refreshEditor(editor: Editor) {
+  private fun refreshEditor(editor: Editor) = ReadAction.run<RuntimeException> {
     disposeInlaysFor(editor)
     val scope = project.service<AvecMoiSettingsService>().editorNoteScope
-    if (scope == EditorNoteScope.OFF) return
-    val editorPath = FileDocumentManager.getInstance().getFile(editor.document)?.path ?: return
+    if (scope == EditorNoteScope.OFF) return@run
+    val editorPath = FileDocumentManager.getInstance().getFile(editor.document)?.path ?: return@run
     val lineCount = editor.document.lineCount
-    if (lineCount == 0) return
+    if (lineCount == 0) return@run
     val ring = project.service<AvecMoiRingService>()
     val current = ring.currentHandoff()
     // Work handoffs honor the ALL/CURRENT scope. References are context — they float only when they're
