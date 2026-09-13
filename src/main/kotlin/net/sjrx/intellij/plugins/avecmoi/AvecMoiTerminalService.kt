@@ -12,6 +12,7 @@ import com.intellij.terminal.ui.TerminalWidget
 import com.intellij.ui.content.Content
 import org.jetbrains.plugins.terminal.TerminalToolWindowFactory
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
+import java.awt.Component
 import java.awt.KeyboardFocusManager
 import java.io.IOException
 import javax.swing.SwingUtilities
@@ -32,6 +33,10 @@ class AvecMoiTerminalService(private val project: Project) {
 
   @Volatile
   private var preferredName: String? = null
+
+  /** Dedup key for the "no terminal though tabs exist" INFO breadcrumb, so polling doesn't spam the log. */
+  @Volatile
+  private var lastEmptyDiag: String? = null
 
   /** One injectable terminal tab, regardless of which engine backs it. */
   private sealed interface Target {
@@ -107,6 +112,23 @@ class AvecMoiTerminalService(private val project: Project) {
     if (log.isDebugEnabled) {
       log.debug("avec-moi terminal detection: reworked=${reworked.size}, legacy=${legacy.size}, names=${all.map { it.name }}")
     }
+    // Visible (INFO) breadcrumb for the "detected nothing though tabs exist" failure — the split-tab
+    // class of bug. Deduped so the sub-second update() polling doesn't spam idea.log.
+    if (all.isEmpty()) {
+      val contents = terminalContents()
+      if (contents.isNotEmpty()) {
+        val mgr = runCatching { TerminalToolWindowManager.getInstance(project) }.getOrNull()
+        val diag = "tabs=${contents.size} classicWidgets=${runCatching { mgr?.widgets?.size }.getOrNull()} " +
+          "terminalWidgets=${runCatching { mgr?.terminalWidgets?.size }.getOrNull()} reworkedTabs=${reworked.size}"
+        if (diag != lastEmptyDiag) {
+          lastEmptyDiag = diag
+          log.info(
+            "avec-moi: detected no terminal though the Terminal tool window has tabs ($diag) — " +
+              "likely an un-enumerable layout (e.g. a split tab). Please report this line.",
+          )
+        }
+      }
+    }
     return all
   }
 
@@ -117,16 +139,21 @@ class AvecMoiTerminalService(private val project: Project) {
   /**
    * The classic-terminal widget for a tab. findWidgetByContent works for a single-pane tab but returns
    * null once the tab is SPLIT (the Content then holds several widgets, none the canonical one) — which
-   * silently dropped split tabs from detection. Fall back to matching by UI ancestry: pick the pane
-   * widget whose component lives under this tab's content, preferring the one that currently has focus.
+   * silently dropped split tabs from detection. Fall back to matching by UI ancestry: any pane whose
+   * component lives under this tab's content, preferring the one that currently has focus. Panes are
+   * gathered from BOTH registries — getWidgets() (classic JBTerminalWidget, itself a component;
+   * bridged via asNewWidget()) and getTerminalWidgets() — since classic panes surface in the former.
    */
   private fun legacyWidgetForContent(content: Content): TerminalWidget? {
     TerminalToolWindowManager.findWidgetByContent(content)?.let { return it }
-    val panes = TerminalToolWindowManager.getInstance(project).terminalWidgets
-      .filter { SwingUtilities.isDescendingFrom(it.component, content.component) }
+    val mgr = TerminalToolWindowManager.getInstance(project)
+    val candidates: List<Pair<Component, TerminalWidget>> =
+      mgr.widgets.map { (it as Component) to it.asNewWidget() } +
+        mgr.terminalWidgets.map { (it.component as Component) to it }
+    val inTab = candidates.filter { SwingUtilities.isDescendingFrom(it.first, content.component) }
     val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
-    return panes.firstOrNull { focusOwner != null && SwingUtilities.isDescendingFrom(focusOwner, it.component) }
-      ?: panes.firstOrNull()
+    return (inTab.firstOrNull { focusOwner != null && SwingUtilities.isDescendingFrom(focusOwner, it.first) }
+      ?: inTab.firstOrNull())?.second
   }
 
   /** Display names of all terminal tabs, for the tool-window dropdown and action gating. */
