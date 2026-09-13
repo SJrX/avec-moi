@@ -298,7 +298,9 @@ class AvecMoiMcpService : Disposable {
                 put("description", "What the human should implement here (for a to-do), or why this spot " +
                   "matters (for a reference). Use real newlines and blank lines for structure, but do NOT " +
                   "hard-wrap at a fixed column — it's a multi-line inlay above the code and the IDE " +
-                  "soft-wraps long lines to the reader's width for them.")
+                  "soft-wraps long lines to the reader's width for them. Wrap code samples in a " +
+                  "triple-backtick ``` fence (or indent them) so their whitespace renders verbatim; " +
+                  "unfenced, unindented code has its indentation flattened.")
               }
               putJsonObject("kind") {
                 put("type", "string")
@@ -1153,6 +1155,10 @@ class AvecMoiMcpService : Disposable {
         it reads naturally rather than cramming everything onto one line. Use ACTUAL line breaks — only
         escape a newline as far as JSON requires (a single \n in the JSON string). Do NOT double-escape
         (\\n) or the note will show a literal backslash-n instead of a line break.
+      - Wrap any code sample in a triple-backtick ``` fence (or, failing that, indent every code line).
+        Fenced and indented lines render VERBATIM — leading indentation and interior spacing preserved,
+        not reflowed — while ordinary prose is soft-wrapped. Without a fence or indent, a snippet like a
+        function body will have its indentation flattened, so always fence code so it stays readable.
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
       - The human steps through the handoffs and implements them.
 
