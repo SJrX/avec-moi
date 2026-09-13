@@ -12,7 +12,6 @@ import com.intellij.terminal.ui.TerminalWidget
 import com.intellij.ui.content.Content
 import org.jetbrains.plugins.terminal.TerminalToolWindowFactory
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
-import java.awt.Component
 import java.awt.KeyboardFocusManager
 import java.io.IOException
 import javax.swing.SwingUtilities
@@ -38,18 +37,25 @@ class AvecMoiTerminalService(private val project: Project) {
   @Volatile
   private var lastEmptyDiag: String? = null
 
-  /** One injectable terminal tab, regardless of which engine backs it. */
+  /** One injectable terminal — a reworked tab or a classic widget (incl. a single pane of a split). */
   private sealed interface Target {
     val name: String
-    val content: Content
 
-    /** Inject [text] and submit it. Returns false if the tab can't currently accept input. */
+    /** The backing Content if this is a whole tab (reworked / single-pane classic); null for a bare
+     *  widget (e.g. one pane of a SPLIT classic tab, which has no Content of its own). */
+    val content: Content?
+
+    /** Component to focus on reveal when there's no Content (a split pane). */
+    val focusable: javax.swing.JComponent?
+
+    /** Inject [text] and submit it. Returns false if the target can't currently accept input. */
     fun send(text: String): Boolean
   }
 
   private inner class ReworkedTarget(private val tab: TerminalToolWindowTab) : Target {
     override val name: String get() = tab.content.displayName ?: "Terminal"
     override val content: Content get() = tab.content
+    override val focusable: javax.swing.JComponent? get() = null
     override fun send(text: String): Boolean {
       val view = tab.view ?: return false
       // Bracketed paste gives the TUI an explicit paste boundary, so the trailing Enter
@@ -60,11 +66,18 @@ class AvecMoiTerminalService(private val project: Project) {
     }
   }
 
-  private inner class LegacyTarget(override val content: Content, private val widget: TerminalWidget) : Target {
-    override val name: String get() = content.displayName ?: "Terminal"
+  /**
+   * A classic-terminal widget, enumerated directly from getTerminalWidgets(). This is the reliable
+   * source: splitting a tab EMPTIES the tool window's content list yet the panes stay in
+   * getTerminalWidgets(), so a content-based enumeration misses split panes.
+   */
+  private inner class WidgetTarget(private val widget: TerminalWidget) : Target {
+    override val name: String get() = widget.terminalTitle.buildTitle().ifBlank { "Terminal" }
+    override val content: Content? get() = null
+    override val focusable: javax.swing.JComponent? get() = widget.preferredFocusableComponent
     override fun send(text: String): Boolean {
-      // Match the reworked path's shape: wrap in a bracketed-paste boundary then Enter, written
-      // straight to the PTY, so a long/multi-line message lands as one paste and the CR submits.
+      // Wrap in a bracketed-paste boundary then Enter, written straight to the PTY, so a long/multi-line
+      // message lands as one paste and the CR submits.
       widget.ttyConnector?.let { tty ->
         try {
           tty.write("\u001B[200~$text\u001B[201~\r")
@@ -84,30 +97,31 @@ class AvecMoiTerminalService(private val project: Project) {
   }
 
   /**
-   * Every terminal tab across both engines, reworked first, de-duped by Content. Each engine is
-   * enumerated in isolation: if one throws (API drift between IDE versions, a threading assertion,
-   * a remote-dev/split-mode frontend), we log it and still return whatever the other engine found,
-   * rather than letting one failure zero out terminal detection entirely.
+   * Every terminal across both engines: reworked tabs (via [TerminalToolWindowTabsManager]) plus classic
+   * widgets (via [TerminalToolWindowManager.getTerminalWidgets], which — unlike the content list — keeps
+   * every pane of a SPLIT tab). Classic widgets living inside a reworked tab are dropped to avoid double-
+   * counting. Each engine is enumerated in isolation so one failing (API drift, a threading assertion, a
+   * remote/split frontend) still returns what the other found instead of zeroing detection.
    */
   private fun targets(): List<Target> {
     val reworked = try {
       TerminalToolWindowTabsManager.getInstance(project).tabs.map { ReworkedTarget(it) }
     } catch (e: Throwable) {
       if (e is ControlFlowException || e is CancellationException) throw e
-      thisLogger().warn("avec-moi: reworked-terminal enumeration failed; falling back to legacy only", e)
+      thisLogger().warn("avec-moi: reworked-terminal enumeration failed; falling back to classic only", e)
       emptyList()
     }
-    val seen = reworked.mapTo(HashSet()) { it.content }
-    val legacy = try {
-      terminalContents()
-        .filter { it !in seen }
-        .mapNotNull { c -> legacyWidgetForContent(c)?.let { LegacyTarget(c, it) } }
+    val reworkedRoots = reworked.mapNotNull { it.content?.component }
+    val classic = try {
+      TerminalToolWindowManager.getInstance(project).terminalWidgets
+        .filter { w -> reworkedRoots.none { SwingUtilities.isDescendingFrom(w.component, it) } }
+        .map { WidgetTarget(it) }
     } catch (e: Throwable) {
       if (e is ControlFlowException || e is CancellationException) throw e
-      thisLogger().warn("avec-moi: legacy-terminal enumeration failed", e)
+      thisLogger().warn("avec-moi: classic-terminal enumeration failed", e)
       emptyList()
     }
-    val all = reworked + legacy
+    val all = reworked + classic
     // Full detection breadcrumb, logged at INFO whenever it CHANGES (deduped, so polling doesn't spam).
     // Always-on so a baseline appears even when detection works — then the split vs unsplit lines can be
     // compared to see which source dropped the tab. If NO line ever appears, this code isn't running.
@@ -127,30 +141,6 @@ class AvecMoiTerminalService(private val project: Project) {
     return all
   }
 
-  private fun terminalContents(): List<Content> =
-    ToolWindowManager.getInstance(project).getToolWindow(TerminalToolWindowFactory.TOOL_WINDOW_ID)
-      ?.contentManager?.contents?.toList().orEmpty()
-
-  /**
-   * The classic-terminal widget for a tab. findWidgetByContent works for a single-pane tab but returns
-   * null once the tab is SPLIT (the Content then holds several widgets, none the canonical one) — which
-   * silently dropped split tabs from detection. Fall back to matching by UI ancestry: any pane whose
-   * component lives under this tab's content, preferring the one that currently has focus. Panes are
-   * gathered from BOTH registries — getWidgets() (classic JBTerminalWidget, itself a component;
-   * bridged via asNewWidget()) and getTerminalWidgets() — since classic panes surface in the former.
-   */
-  private fun legacyWidgetForContent(content: Content): TerminalWidget? {
-    TerminalToolWindowManager.findWidgetByContent(content)?.let { return it }
-    val mgr = TerminalToolWindowManager.getInstance(project)
-    val candidates: List<Pair<Component, TerminalWidget>> =
-      mgr.widgets.map { (it as Component) to it.asNewWidget() } +
-        mgr.terminalWidgets.map { (it.component as Component) to it }
-    val inTab = candidates.filter { SwingUtilities.isDescendingFrom(it.first, content.component) }
-    val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
-    return (inTab.firstOrNull { focusOwner != null && SwingUtilities.isDescendingFrom(focusOwner, it.first) }
-      ?: inTab.firstOrNull())?.second
-  }
-
   /** Display names of all terminal tabs, for the tool-window dropdown and action gating. */
   fun tabNames(): List<String> = targets().map { it.name }
 
@@ -160,14 +150,18 @@ class AvecMoiTerminalService(private val project: Project) {
 
   fun preferredName(): String? = preferredName
 
-  /** The pinned tab if it still exists, else the selected terminal tab, else the first. */
+  /** The pinned tab; else the pane the user is focused on; else the selected tab; else the first. */
   private fun target(): Target? {
     val targets = targets()
     if (targets.isEmpty()) return null
     preferredName?.let { name -> targets.firstOrNull { it.name == name }?.let { return it } }
+    // Prefer the pane that actually has focus — matters for a split, where several panes share a tab.
+    val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
+    targets.firstOrNull { t -> t.focusable?.let { focusOwner != null && SwingUtilities.isDescendingFrom(focusOwner, it) } == true }
+      ?.let { return it }
     val selected = ToolWindowManager.getInstance(project)
       .getToolWindow(TerminalToolWindowFactory.TOOL_WINDOW_ID)?.contentManager?.selectedContent
-    return targets.firstOrNull { it.content == selected } ?: targets.first()
+    return targets.firstOrNull { it.content != null && it.content == selected } ?: targets.first()
   }
 
   fun targetName(): String? = target()?.name
@@ -177,17 +171,20 @@ class AvecMoiTerminalService(private val project: Project) {
     val target = target() ?: return false
     if (!target.send(text)) return false
     when (project.service<AvecMoiSettingsService>().terminalOnSend) {
-      TerminalRevealBehavior.SHOW -> revealTerminal(target.content, focus = false)
-      TerminalRevealBehavior.SHOW_AND_FOCUS -> revealTerminal(target.content, focus = true)
+      TerminalRevealBehavior.SHOW -> reveal(target, focus = false)
+      TerminalRevealBehavior.SHOW_AND_FOCUS -> reveal(target, focus = true)
       TerminalRevealBehavior.NONE -> Unit
     }
     return true
   }
 
-  /** Show the terminal tool window and select [content]. When [focus] is false, keyboard focus stays put. */
-  private fun revealTerminal(content: Content, focus: Boolean) {
+  /** Show the terminal tool window, select the target's tab if it has one, and focus its pane if asked. */
+  private fun reveal(target: Target, focus: Boolean) {
     val toolWindow = ToolWindowManager.getInstance(project)
       .getToolWindow(TerminalToolWindowFactory.TOOL_WINDOW_ID) ?: return
-    toolWindow.activate({ toolWindow.contentManager.setSelectedContent(content, focus) }, focus)
+    toolWindow.activate({
+      target.content?.let { toolWindow.contentManager.setSelectedContent(it, focus) }
+      if (focus) target.focusable?.requestFocusInWindow()
+    }, focus)
   }
 }
