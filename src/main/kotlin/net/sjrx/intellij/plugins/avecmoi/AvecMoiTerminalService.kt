@@ -108,26 +108,21 @@ class AvecMoiTerminalService(private val project: Project) {
       emptyList()
     }
     val all = reworked + legacy
-    val log = thisLogger()
-    if (log.isDebugEnabled) {
-      log.debug("avec-moi terminal detection: reworked=${reworked.size}, legacy=${legacy.size}, names=${all.map { it.name }}")
-    }
-    // Visible (INFO) breadcrumb for the "detected nothing though tabs exist" failure — the split-tab
-    // class of bug. Deduped so the sub-second update() polling doesn't spam idea.log.
-    if (all.isEmpty()) {
-      val contents = terminalContents()
-      if (contents.isNotEmpty()) {
-        val mgr = runCatching { TerminalToolWindowManager.getInstance(project) }.getOrNull()
-        val diag = "tabs=${contents.size} classicWidgets=${runCatching { mgr?.widgets?.size }.getOrNull()} " +
-          "terminalWidgets=${runCatching { mgr?.terminalWidgets?.size }.getOrNull()} reworkedTabs=${reworked.size}"
-        if (diag != lastEmptyDiag) {
-          lastEmptyDiag = diag
-          log.info(
-            "avec-moi: detected no terminal though the Terminal tool window has tabs ($diag) — " +
-              "likely an un-enumerable layout (e.g. a split tab). Please report this line.",
-          )
-        }
-      }
+    // Full detection breadcrumb, logged at INFO whenever it CHANGES (deduped, so polling doesn't spam).
+    // Always-on so a baseline appears even when detection works — then the split vs unsplit lines can be
+    // compared to see which source dropped the tab. If NO line ever appears, this code isn't running.
+    val mgr = runCatching { TerminalToolWindowManager.getInstance(project) }.getOrNull()
+    val tw = runCatching {
+      ToolWindowManager.getInstance(project).getToolWindow(TerminalToolWindowFactory.TOOL_WINDOW_ID)
+    }.getOrNull()
+    val diag = "detected=${all.size} names=${all.map { it.name }} | toolWindow=${tw != null} " +
+      "contents=${runCatching { tw?.contentManager?.contents?.size }.getOrNull()} " +
+      "reworkedTabs=${reworked.size} " +
+      "classicWidgets=${runCatching { mgr?.widgets?.size }.getOrNull()} " +
+      "terminalWidgets=${runCatching { mgr?.terminalWidgets?.size }.getOrNull()}"
+    if (diag != lastEmptyDiag) {
+      lastEmptyDiag = diag
+      thisLogger().info("avec-moi terminal detection: $diag")
     }
     return all
   }
