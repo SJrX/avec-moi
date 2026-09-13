@@ -12,7 +12,9 @@ import com.intellij.terminal.ui.TerminalWidget
 import com.intellij.ui.content.Content
 import org.jetbrains.plugins.terminal.TerminalToolWindowFactory
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
+import java.awt.KeyboardFocusManager
 import java.io.IOException
+import javax.swing.SwingUtilities
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -94,7 +96,7 @@ class AvecMoiTerminalService(private val project: Project) {
     val legacy = try {
       terminalContents()
         .filter { it !in seen }
-        .mapNotNull { c -> TerminalToolWindowManager.findWidgetByContent(c)?.let { LegacyTarget(c, it) } }
+        .mapNotNull { c -> legacyWidgetForContent(c)?.let { LegacyTarget(c, it) } }
     } catch (e: Throwable) {
       if (e is ControlFlowException || e is CancellationException) throw e
       thisLogger().warn("avec-moi: legacy-terminal enumeration failed", e)
@@ -111,6 +113,21 @@ class AvecMoiTerminalService(private val project: Project) {
   private fun terminalContents(): List<Content> =
     ToolWindowManager.getInstance(project).getToolWindow(TerminalToolWindowFactory.TOOL_WINDOW_ID)
       ?.contentManager?.contents?.toList().orEmpty()
+
+  /**
+   * The classic-terminal widget for a tab. findWidgetByContent works for a single-pane tab but returns
+   * null once the tab is SPLIT (the Content then holds several widgets, none the canonical one) — which
+   * silently dropped split tabs from detection. Fall back to matching by UI ancestry: pick the pane
+   * widget whose component lives under this tab's content, preferring the one that currently has focus.
+   */
+  private fun legacyWidgetForContent(content: Content): TerminalWidget? {
+    TerminalToolWindowManager.findWidgetByContent(content)?.let { return it }
+    val panes = TerminalToolWindowManager.getInstance(project).terminalWidgets
+      .filter { SwingUtilities.isDescendingFrom(it.component, content.component) }
+    val focusOwner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner
+    return panes.firstOrNull { focusOwner != null && SwingUtilities.isDescendingFrom(focusOwner, it.component) }
+      ?: panes.firstOrNull()
+  }
 
   /** Display names of all terminal tabs, for the tool-window dropdown and action gating. */
   fun tabNames(): List<String> = targets().map { it.name }
