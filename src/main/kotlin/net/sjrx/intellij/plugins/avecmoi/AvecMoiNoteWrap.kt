@@ -9,21 +9,33 @@ object AvecMoiNoteWrap {
 
   /**
    * The note split into display lines. The note's own newlines are hard breaks (paragraphs/lists) and
-   * are kept — blank lines included; each logical line is then greedily word-wrapped to [budget].
-   * Leading/trailing blank lines and per-line trailing whitespace are trimmed so a note that ends in a
-   * newline doesn't render empty rows. A single word wider than the budget is left to overflow rather
-   * than being chopped.
+   * are kept — blank lines included. Each logical line is classified [isPreformatted] (code): a
+   * preformatted line is rendered verbatim (leading indentation and interior spacing preserved),
+   * truncated to [budget] rather than reflowed; every other line is prose and is greedily word-wrapped
+   * to [budget]. Triple-backtick fence lines delimit preformatted regions and are swallowed (not
+   * drawn). Leading/trailing blank lines and per-line trailing whitespace are trimmed so a note that
+   * ends in a newline doesn't render empty rows. A single word wider than the budget is left to
+   * overflow rather than being chopped.
    */
   fun wrap(note: String, budget: Int, widthOf: (String) -> Int): List<String> {
     val out = ArrayList<String>()
-    for (logical in note.trim().split("\n")) {
-      val stripped = logical.trimEnd()
-      if (stripped.isBlank()) {
+    var inFence = false
+    for (raw in trimBlankEdges(note.split("\n"))) {
+      if (isFenceMarker(raw)) {
+        inFence = !inFence
+        continue // the ``` line itself is a delimiter, not content — don't render it.
+      }
+      val logical = raw.trimEnd()
+      if (isPreformatted(logical, inFence)) {
+        out.add(truncateToWidth(logical, budget, widthOf)) // leading whitespace kept verbatim.
+        continue
+      }
+      if (logical.isBlank()) {
         out.add("")
         continue
       }
       val line = StringBuilder()
-      for (word in stripped.split(" ")) {
+      for (word in logical.split(" ")) {
         val candidate = if (line.isEmpty()) word else "$line $word"
         if (line.isEmpty() || widthOf(candidate) <= budget) {
           line.setLength(0)
@@ -37,6 +49,35 @@ object AvecMoiNoteWrap {
       out.add(line.toString())
     }
     return out.ifEmpty { listOf("") }
+  }
+
+  /** Drops leading and trailing blank lines so a note that begins/ends in newlines renders no empty rows. */
+  private fun trimBlankEdges(lines: List<String>): List<String> =
+    lines.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }
+
+  /** True if [raw] is a code-fence delimiter (a line whose first non-space content is ```, info-string allowed). */
+  private fun isFenceMarker(raw: String): Boolean =
+    raw.trimStart().startsWith("```")
+
+  /**
+   * True if [logical] should be rendered verbatim as code rather than word-wrapped as prose: either
+   * we're currently inside a ``` fence, or the line is indented (agents set code off from prose by
+   * indenting it). This is the whole classifier — see the handoff discussion for why indentation is
+   * the load-bearing signal and fences are the belt-and-suspenders second signal.
+   */
+  private fun isPreformatted(logical: String, inFence: Boolean): Boolean =
+    inFence || logical.startsWith(" ") || logical.startsWith("\t")
+
+  /**
+   * A preformatted line clipped to [budget] pixels, keeping its leading whitespace. If it already
+   * fits, it's returned unchanged; otherwise trailing characters are dropped and a "…" appended.
+   * Mirror [collapse]'s ellipsis loop, but drop from the END so the leading indent survives.
+   */
+  private fun truncateToWidth(logical: String, budget: Int, widthOf: (String) -> Int): String {
+    if (widthOf(logical) <= budget) return logical
+    var s = logical
+    while (s.isNotEmpty() && widthOf("$s…") > budget) s = s.dropLast(1)
+    return "$s…"
   }
 
   /** The note's first non-blank line, ellipsized to one [budget]-wide line, with "…" if there's more. */
