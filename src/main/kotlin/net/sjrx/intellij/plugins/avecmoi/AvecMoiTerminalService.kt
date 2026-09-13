@@ -72,7 +72,11 @@ class AvecMoiTerminalService(private val project: Project) {
    * getTerminalWidgets(), so a content-based enumeration misses split panes.
    */
   private inner class WidgetTarget(private val widget: TerminalWidget) : Target {
-    override val name: String get() = widget.terminalTitle.buildTitle().ifBlank { "Terminal" }
+    // The STABLE tab label ("Local", "Local (2)", or a manual rename) — NOT buildTitle(), which prefers
+    // the shell's application title (bash sets the window title to the prompt, e.g. sjr@host:~/dir).
+    override val name: String get() = widget.terminalTitle.let { t ->
+      t.userDefinedTitle?.takeIf { it.isNotBlank() } ?: t.defaultTitle?.takeIf { it.isNotBlank() } ?: "Terminal"
+    }
     override val content: Content? get() = null
     override val focusable: javax.swing.JComponent? get() = widget.preferredFocusableComponent
     override fun send(text: String): Boolean {
