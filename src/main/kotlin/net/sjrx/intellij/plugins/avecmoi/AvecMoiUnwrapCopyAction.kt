@@ -7,7 +7,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.ide.CopyPasteManager
-import com.intellij.terminal.JBTerminalWidget
 import com.intellij.terminal.actions.TerminalActionUtil
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
@@ -18,12 +17,10 @@ import java.awt.datatransfer.StringSelection
  * what a broken line is rejoined with — nothing (URLs/paths) or a single space (prose) — since which
  * one is right depends on the selection and only the human knows.
  *
- * Reads the selection three ways, in order: the reworked terminal's editor (its output is a real
- * [Editor], read via the terminal's own [TerminalActionUtil.EDITOR_KEY]); the classic terminal's
- * [JBTerminalWidget.SELECTED_TEXT_DATA_KEY] (its selection isn't editor-based); and finally the
- * clipboard, so "copy first, then unwrap" works anywhere. The classic terminal's right-click menu is
- * a fixed platform-built list with no extension point, so there these actions are reachable via Find
- * Action rather than the context menu — the classic data key is what makes that work.
+ * Reads the selection from the reworked terminal's editor (its output is a real [Editor], read via
+ * the terminal's own [TerminalActionUtil.EDITOR_KEY]), falling back to the clipboard so "copy first,
+ * then unwrap" still works. avec-moi targets the reworked terminal only; the classic engine isn't
+ * supported.
  */
 abstract class AvecMoiUnwrapCopyActionBase(private val separator: String) : AnAction() {
 
@@ -37,18 +34,15 @@ abstract class AvecMoiUnwrapCopyActionBase(private val separator: String) : AnAc
     // Mirror the sibling Copy action: shown only when there's a terminal selection to act on. The
     // clipboard fallback in actionPerformed is for other invocation paths, not menu enablement —
     // reading the system clipboard on every menu update would be needlessly heavy.
-    e.presentation.isEnabledAndVisible = terminalSelection(e) != null
+    e.presentation.isEnabledAndVisible = terminalEditor(e)?.selectionModel?.hasSelection() == true
   }
 
   override fun actionPerformed(e: AnActionEvent) {
-    val text = terminalSelection(e) ?: clipboardText() ?: return
+    val text = terminalEditor(e)?.selectionModel?.selectedText?.takeIf { it.isNotEmpty() }
+      ?: clipboardText()
+      ?: return
     CopyPasteManager.getInstance().setContents(StringSelection(AvecMoiUnwrap.unwrap(text, separator)))
   }
-
-  /** The current terminal selection: reworked (editor) first, then classic (data key). Null if none. */
-  private fun terminalSelection(e: AnActionEvent): String? =
-    terminalEditor(e)?.selectionModel?.selectedText?.takeIf { it.isNotEmpty() }
-      ?: e.getData(JBTerminalWidget.SELECTED_TEXT_DATA_KEY)?.takeIf { it.isNotEmpty() }
 
   /**
    * The editor backing the reworked terminal under the cursor. That terminal's context-menu data
