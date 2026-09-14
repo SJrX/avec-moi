@@ -91,16 +91,25 @@
       <reference ref="avecmoi.AskForHint"/>
     </group>
 
-    <!-- Terminal context-menu action: copy the selection with Claude Code's hard soft-wrap breaks
-         removed (see AvecMoiUnwrap / anthropics/claude-code#7670). Anchored right after the built-in
-         Copy in the reworked terminal's output and general context menus. -->
+    <!-- Terminal context-menu actions: copy the selection with Claude Code's hard soft-wrap breaks
+         removed (see AvecMoiUnwrap / anthropics/claude-code#7670). Two variants because rejoining a
+         broken line correctly depends on the content: no separator for URLs/paths, a space for prose.
+         Anchored right after the built-in Copy in the reworked terminal's context menus. -->
     <action id="avecmoi.CopyUnwrap"
-            class="net.sjrx.intellij.plugins.avecmoi.AvecMoiUnwrapCopyAction"
-            text="Copy + Unwrap"
-            description="Copy the terminal selection with hard soft-wrap line breaks removed (newline + two-space continuations are rejoined)"
+            class="net.sjrx.intellij.plugins.avecmoi.AvecMoiUnwrapJoinCopyAction"
+            text="Copy + Unwrap (Join)"
+            description="Copy the terminal selection with hard wrap breaks removed and the lines joined directly (no separator) — best for URLs and paths broken across lines"
             icon="AllIcons.Actions.Copy">
       <add-to-group group-id="Terminal.OutputContextMenu" anchor="after" relative-to-action="Terminal.CopySelectedText"/>
       <add-to-group group-id="Terminal.ReworkedTerminalContextMenu" anchor="after" relative-to-action="Terminal.CopySelectedText"/>
+    </action>
+    <action id="avecmoi.CopyUnwrapSpace"
+            class="net.sjrx.intellij.plugins.avecmoi.AvecMoiUnwrapSpaceCopyAction"
+            text="Copy + Unwrap (Space)"
+            description="Copy the terminal selection with hard wrap breaks replaced by a single space — best for reflowing wrapped prose"
+            icon="AllIcons.Actions.Copy">
+      <add-to-group group-id="Terminal.OutputContextMenu" anchor="after" relative-to-action="avecmoi.CopyUnwrap"/>
+      <add-to-group group-id="Terminal.ReworkedTerminalContextMenu" anchor="after" relative-to-action="avecmoi.CopyUnwrap"/>
     </action>
   </actions>
 </idea-plugin>

@@ -4,92 +4,93 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * The clipboard-unwrap transform — pure, so plain JUnit (no platform). Pins v1: a newline followed by
- * exactly two spaces (an agent's wrapped-line continuation) is removed, and nothing else is touched.
+ * The clipboard-unwrap transform — pure, so plain JUnit (no platform). A wrap break is (any spaces +)
+ * a newline + an indented continuation, of any indent width. It's replaced by the caller's separator:
+ * "" to join directly (URLs/paths), " " to reflow prose. Genuine breaks are left alone.
  */
 class AvecMoiUnwrapTest {
 
-  private fun unwrap(text: String) = AvecMoiUnwrap.unwrap(text)
+  private fun join(text: String) = AvecMoiUnwrap.unwrap(text, "")
+  private fun space(text: String) = AvecMoiUnwrap.unwrap(text, " ")
 
-  @Test fun aNewlinePlusTwoSpacesIsRemovedAndTheLinesRejoin() {
-    // Setup: a line hard-wrapped by the agent, its continuation indented two spaces.
-    val copied = "the quick brown\n  fox jumps"
+  @Test fun joinRejoinsABrokenLineWithNoSeparator() {
+    // Setup: a URL split across two lines, the continuation indented (as Claude Code emits it).
+    val copied = "https://example.com/x?q=aaaa\n  aaaa"
 
     // Exercise:
-    val result = unwrap(copied)
+    val result = join(copied)
 
-    // Verify: the break is gone and the continuation joins the previous line (no separator).
-    assertEquals("the quick brownfox jumps", result)
+    // Verify: one contiguous URL, no gap.
+    assertEquals("https://example.com/x?q=aaaaaaaa", result)
   }
 
-  @Test fun everyWrapBreakInTheTextIsRemoved() {
-    // Setup: several wrap breaks across one long logical line.
-    val copied = "alpha\n  beta\n  gamma\n  delta"
+  @Test fun joinCollapsesDeepIndentSoUrlsHaveNoLeftoverGap() {
+    // Setup: the real bug — a code/output block wraps with a FIVE-space hang, not two.
+    val copied = "aaaaaaaa\n     aaaaaaaa"
 
     // Exercise:
-    val result = unwrap(copied)
+    val result = join(copied)
 
-    // Verify: all of them collapse.
-    assertEquals("alphabetagammadelta", result)
+    // Verify: the whole indent is consumed — no stray spaces survive mid-token.
+    assertEquals("aaaaaaaaaaaaaaaa", result)
+  }
+
+  @Test fun spaceRejoinsProseWithASingleSpace() {
+    // Setup: prose wrapped at a word boundary — the space was eaten by the break.
+    val copied = "log-injection or terminal-escape\n  payload"
+
+    // Exercise:
+    val result = space(copied)
+
+    // Verify: the words are separated again.
+    assertEquals("log-injection or terminal-escape payload", result)
+  }
+
+  @Test fun aTrailingSpaceBeforeTheBreakIsNormalizedAway() {
+    // Setup: some wraps leave a space before the newline too.
+    val copied = "terminal-escape \n  payload"
+
+    // Exercise / Verify: join eats both sides (no double); space yields exactly one.
+    assertEquals("terminal-escapepayload", join(copied))
+    assertEquals("terminal-escape payload", space(copied))
+  }
+
+  @Test fun everyWrapBreakInTheTextIsHandled() {
+    // Setup: several breaks, mixed indent widths.
+    val copied = "alpha\n  beta\n    gamma\n  delta"
+
+    // Exercise / Verify:
+    assertEquals("alphabetagammadelta", join(copied))
+    assertEquals("alpha beta gamma delta", space(copied))
   }
 
   @Test fun aPlainNewlineWithNoIndentIsLeftAlone() {
-    // Setup: a genuine line break (not a wrap continuation) — no leading spaces.
+    // Setup: a genuine line break — no indented continuation.
     val copied = "first line\nsecond line"
 
-    // Exercise:
-    val result = unwrap(copied)
-
-    // Verify: untouched.
-    assertEquals("first line\nsecond line", result)
+    // Exercise / Verify: both variants leave it untouched.
+    assertEquals("first line\nsecond line", join(copied))
+    assertEquals("first line\nsecond line", space(copied))
   }
 
   @Test fun aBlankLineBetweenParagraphsIsPreserved() {
-    // Setup: two paragraphs separated by a blank line.
+    // Setup: two paragraphs separated by a blank line (no indent after the first newline).
     val copied = "para one\n\npara two"
 
-    // Exercise:
-    val result = unwrap(copied)
-
-    // Verify: the blank line survives — it's "\n\n", not "\n  ".
-    assertEquals("para one\n\npara two", result)
-  }
-
-  @Test fun onlyTheFirstTwoSpacesAfterANewlineAreConsumed() {
-    // Setup: a deeper (four-space) indent — v1 targets exactly newline + two spaces.
-    val copied = "head\n    tail"
-
-    // Exercise:
-    val result = unwrap(copied)
-
-    // Verify: the "\n  " prefix goes, leaving the remaining two spaces of indentation.
-    assertEquals("head  tail", result)
-  }
-
-  @Test fun aSingleSpaceIndentIsNotAWrapBreak() {
-    // Setup: newline + one space — below the two-space threshold.
-    val copied = "head\n tail"
-
-    // Exercise:
-    val result = unwrap(copied)
-
-    // Verify: left alone.
-    assertEquals("head\n tail", result)
+    // Exercise / Verify:
+    assertEquals("para one\n\npara two", join(copied))
+    assertEquals("para one\n\npara two", space(copied))
   }
 
   @Test fun textWithNoWrapBreaksIsReturnedUnchanged() {
-    // Setup: an ordinary single line.
-    val copied = "nothing to unwrap here"
-
-    // Exercise:
-    val result = unwrap(copied)
-
-    // Verify:
-    assertEquals("nothing to unwrap here", result)
+    // Setup / Exercise / Verify:
+    assertEquals("nothing to unwrap here", join("nothing to unwrap here"))
+    assertEquals("nothing to unwrap here", space("nothing to unwrap here"))
   }
 
   @Test fun anEmptyStringIsEmpty() {
     // Setup / Exercise / Verify:
-    assertEquals("", unwrap(""))
+    assertEquals("", join(""))
+    assertEquals("", space(""))
   }
 }

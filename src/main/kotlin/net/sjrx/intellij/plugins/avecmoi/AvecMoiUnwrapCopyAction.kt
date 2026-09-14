@@ -13,15 +13,17 @@ import java.awt.datatransfer.StringSelection
 
 /**
  * "Copy + Unwrap": like the terminal's Copy, but strips the hard soft-wrap breaks agents bake into
- * long output lines (see [AvecMoiUnwrap]) before putting the text on the clipboard.
+ * long output lines (see [AvecMoiUnwrap]) before putting the text on the clipboard. Subclasses fix
+ * what a broken line is rejoined with — nothing (URLs/paths) or a single space (prose) — since which
+ * one is right depends on the selection and only the human knows.
  *
  * Reads the selection the same way the reworked terminal's own copy action does — the terminal output
- * is a real [com.intellij.openapi.editor.Editor], so its [com.intellij.openapi.editor.SelectionModel]
- * carries the selected text. If there's no editor selection (e.g. the classic engine, whose selection
- * isn't editor-based), it falls back to unwrapping whatever's already on the clipboard, so "copy first,
- * then Copy + Unwrap" still works there.
+ * is a real [Editor], so its [com.intellij.openapi.editor.SelectionModel] carries the selected text.
+ * If there's no editor selection (e.g. the classic engine, whose selection isn't editor-based), it
+ * falls back to unwrapping whatever's already on the clipboard, so "copy first, then Copy + Unwrap"
+ * still works there.
  */
-class AvecMoiUnwrapCopyAction : AnAction() {
+abstract class AvecMoiUnwrapCopyActionBase(private val separator: String) : AnAction() {
 
   init {
     templatePresentation.icon = AllIcons.Actions.Copy
@@ -40,7 +42,7 @@ class AvecMoiUnwrapCopyAction : AnAction() {
     val text = terminalEditor(e)?.selectionModel?.selectedText?.takeIf { it.isNotEmpty() }
       ?: clipboardText()
       ?: return
-    CopyPasteManager.getInstance().setContents(StringSelection(AvecMoiUnwrap.unwrap(text)))
+    CopyPasteManager.getInstance().setContents(StringSelection(AvecMoiUnwrap.unwrap(text, separator)))
   }
 
   /**
@@ -59,3 +61,9 @@ class AvecMoiUnwrapCopyAction : AnAction() {
       .getOrNull()
       ?.takeIf { it.isNotEmpty() }
 }
+
+/** Copy + Unwrap joining broken lines directly, with no separator — best for URLs and paths. */
+class AvecMoiUnwrapJoinCopyAction : AvecMoiUnwrapCopyActionBase("")
+
+/** Copy + Unwrap joining broken lines with a single space — best for reflowing wrapped prose. */
+class AvecMoiUnwrapSpaceCopyAction : AvecMoiUnwrapCopyActionBase(" ")
