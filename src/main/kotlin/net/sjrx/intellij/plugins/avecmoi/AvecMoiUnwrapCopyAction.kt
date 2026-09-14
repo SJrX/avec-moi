@@ -5,7 +5,9 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.terminal.actions.TerminalActionUtil
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 
@@ -31,16 +33,25 @@ class AvecMoiUnwrapCopyAction : AnAction() {
     // Mirror the sibling Copy action: shown only when there's a terminal selection to act on. The
     // clipboard fallback in actionPerformed is for the shortcut/classic path, not menu enablement —
     // reading the system clipboard on every menu update would be needlessly heavy.
-    e.presentation.isEnabledAndVisible =
-      e.getData(CommonDataKeys.EDITOR)?.selectionModel?.hasSelection() == true
+    e.presentation.isEnabledAndVisible = terminalEditor(e)?.selectionModel?.hasSelection() == true
   }
 
   override fun actionPerformed(e: AnActionEvent) {
-    val text = e.getData(CommonDataKeys.EDITOR)?.selectionModel?.selectedText?.takeIf { it.isNotEmpty() }
+    val text = terminalEditor(e)?.selectionModel?.selectedText?.takeIf { it.isNotEmpty() }
       ?: clipboardText()
       ?: return
     CopyPasteManager.getInstance().setContents(StringSelection(AvecMoiUnwrap.unwrap(text)))
   }
+
+  /**
+   * The editor backing the terminal under the cursor. The reworked terminal's context-menu data
+   * context exposes its editor ONLY under [TerminalActionUtil.EDITOR_KEY] (not [CommonDataKeys.EDITOR]
+   * — its DataContextWrapper special-cases just that one key), which is why gating on the generic
+   * editor key hid this action entirely. We read the terminal key first, exactly like the built-in
+   * Terminal.CopySelectedText, and fall back to the generic key for any other host.
+   */
+  private fun terminalEditor(e: AnActionEvent): Editor? =
+    e.getData(TerminalActionUtil.EDITOR_KEY) ?: e.getData(CommonDataKeys.EDITOR)
 
   /** The clipboard's current text, or null if empty / not text / unreadable. */
   private fun clipboardText(): String? =
