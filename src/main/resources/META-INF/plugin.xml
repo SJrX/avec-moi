@@ -97,7 +97,7 @@
          Anchored right after the built-in Copy in the reworked terminal's context menus. -->
     <action id="avecmoi.CopyUnwrap"
             class="net.sjrx.intellij.plugins.avecmoi.AvecMoiUnwrapJoinCopyAction"
-            text="Copy + Unwrap (Join)"
+            text="Copy + Unwrap (no space)"
             description="Copy the terminal selection with hard wrap breaks removed and the lines joined directly (no separator) — best for URLs and paths broken across lines"
             icon="AllIcons.Actions.Copy">
       <add-to-group group-id="Terminal.OutputContextMenu" anchor="after" relative-to-action="Terminal.CopySelectedText"/>
@@ -105,7 +105,7 @@
     </action>
     <action id="avecmoi.CopyUnwrapSpace"
             class="net.sjrx.intellij.plugins.avecmoi.AvecMoiUnwrapSpaceCopyAction"
-            text="Copy + Unwrap (Space)"
+            text="Copy + Unwrap (with space)"
             description="Copy the terminal selection with hard wrap breaks replaced by a single space — best for reflowing wrapped prose"
             icon="AllIcons.Actions.Copy">
       <add-to-group group-id="Terminal.OutputContextMenu" anchor="after" relative-to-action="avecmoi.CopyUnwrap"/>
