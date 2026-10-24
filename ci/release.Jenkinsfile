@@ -278,9 +278,13 @@ pipeline {
             ./gradlew --no-daemon -I ./build-cache-init.gradle.kts -I ./repo-cache-init.gradle.kts --build-cache build buildPlugin -PbuildScan
             """)
           script {
+            // The zip is build/distributions/avec-moi-<version>.zip; <version> itself may contain dashes.
             pluginVersion = sh(script: '''
-              ls -1 ./build/distributions/*.zip | sort | tail -n 1 | sed -E "s/.+-(.+).zip$/\\1/g"
+              basename "$(ls -1 ./build/distributions/avec-moi-*.zip | sort | tail -n 1)" .zip | sed -e 's/^avec-moi-//'
               ''', returnStdout: true).trim()
+            if (!pluginVersion) {
+              error("No plugin zip in build/distributions")
+            }
             echo "Plugin version ${pluginVersion}"
 
             if (isReleaseBranch) {

@@ -47,8 +47,9 @@ fun getVersionNumber(): String {
   val build = System.getenv("BUILD_NUMBER") ?: nextBuildNumber().toString()
 
   // On CI, BRANCH_NAME is set (a NNN.x release branch drops the suffix). Locally, fall back to the
-  // git sha (+ -dirty) instead of "undefined" so the suffix actually disambiguates builds.
-  val branchName = System.getenv("BRANCH_NAME") ?: gitDescribe()
+  // git sha (+ -dirty) instead of "undefined" so the suffix actually disambiguates builds. Branch
+  // names like "ci/foo" are sanitized, or the '/' would put the distribution zip in a subdirectory.
+  val branchName = (System.getenv("BRANCH_NAME") ?: gitDescribe()).replace(Regex("[^A-Za-z0-9._-]"), "-")
 
   return if (branchName.matches(Regex("""[0-9]{3}\.x"""))) {
     "${major}.${minor}.${build}"
