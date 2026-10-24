@@ -56,7 +56,7 @@ fun getVersionNumber(): String {
 plugins {
   id("java")
   id("org.jetbrains.intellij.platform") version "2.18.1"
-  id("org.jetbrains.kotlin.jvm") version "2.4.10"
+  id("org.jetbrains.kotlin.jvm") version "2.4.21"
   id("idea")
 }
 
