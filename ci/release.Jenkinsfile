@@ -35,9 +35,25 @@ if (isReleaseDay && started_by_timer) {
 echo "Release channel $releaseChannel"
 
 def buildPodDefinition(workerPodImage, ciUtilsEnabled, kanikoEnabled) {
+  // Pods that run Gradle (worker-pod) or kaniko are "heavy": at most one of them may be scheduled per node,
+  // across all builds, so a burst of builds queues instead of piling onto (and thrashing) the fast nodes.
+  // The label is shared with the systemdUnitFilePlugin pipeline, so the cap holds across both projects.
+  def heavy = workerPodImage != null || kanikoEnabled
+
   // language=yaml
   yaml = """
 kind: Pod
+"""
+
+  if (heavy) {
+    yaml += """
+metadata:
+  labels:
+    systemd-plugin-ci/load: heavy
+"""
+  }
+
+  yaml += """
 spec:
   affinity:
       nodeAffinity:
@@ -49,6 +65,20 @@ spec:
                   operator: In
                   values:
                     - fast
+"""
+
+  if (heavy) {
+    yaml += """
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                systemd-plugin-ci/load: heavy
+            topologyKey: kubernetes.io/hostname
+"""
+  }
+
+  yaml += """
   hostAliases:
   # Custom set env var
   - ip: "${env.JENKINS_IP_ADDRESS}"
@@ -80,8 +110,8 @@ spec:
     args:
     - 99d
     resources:
-    requests:
-      memory: "3172Mi"
+      requests:
+        memory: "3172Mi"
     volumeMounts:
     - name: jenkins-docker-cfg
       mountPath: /kaniko/.docker
@@ -102,9 +132,15 @@ spec:
     - sleep
     args:
     - 99d
+    # Without a limit every JVM sizes its default heap from the node's RAM. Under a limit the JVMs size from
+    # the container; the systemdUnitFilePlugin build measured 2.2-3.1Gi RSS this way. The request fits the
+    # 8 GB nodes (with jnlp); the limit is kept roomy because it also sets the JVMs' default max heap. A
+    # runaway build is OOM-killed in its own cgroup, not the node (SJrX/systemdUnitFilePlugin#559).
     resources:
       requests:
-        memory: "2048Mi"
+        memory: "4Gi"
+      limits:
+        memory: "6Gi"
     volumeMounts:
     - name: github-ssh-host-key
       mountPath:  /github-ssh-host-key
