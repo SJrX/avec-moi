@@ -96,6 +96,8 @@ pipeline {
                   echo \$BRANCH_NAME | sed -E "s/([0-9][0-9])([0-9]).x/intellijVersion=20\\1.\\2/" >> avec-moi/gradle.properties
                   echo \$BRANCH_NAME | sed -E "s/([0-9][0-9])([0-9]).x/sinceVersion=\\1\\2.0/" >> avec-moi/gradle.properties
                   echo \$BRANCH_NAME | sed -E "s/([0-9][0-9])([0-9]).x/pluginMajorVersion=\\1\\2/" >> avec-moi/gradle.properties
+                  echo "kotlin.stdlib.default.dependency=true" >> avec-moi/gradle.properties
+                  echo "org.jetbrains.intellij.platform.useDefaultSandboxExclusions=false" >> avec-moi/gradle.properties
 
                   git -C avec-moi add gradle.properties
                   cat avec-moi/gradle.properties
