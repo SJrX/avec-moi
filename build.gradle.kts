@@ -38,6 +38,10 @@ fun nextBuildNumber(): Int {
 }
 
 fun getVersionNumber(): String {
+  // CI pins the version so the -dev rebuild and a release published after midnight both match the
+  // build the release gate approved (see ci/release.Jenkinsfile).
+  System.getenv("PLUGIN_VERSION")?.let { return it }
+
   val major = properties("pluginMajorVersion")
   val minor = LocalDate.now().format(ofPattern("yyMMdd"))
   val build = System.getenv("BUILD_NUMBER") ?: nextBuildNumber().toString()

@@ -4,35 +4,39 @@
  * Strategy (mirrored from the systemdUnitFilePlugin release pipeline):
  *   1. Build (and push, only if the content hash changed) a "build-environment" Docker image that
  *      has the Gradle dependency cache + IntelliJ Platform SDK pre-warmed.
- *   2. Inside a pod running that image, build + test the plugin, tag the release on a release
- *      branch, publish it to the JetBrains Marketplace, and archive the artifacts.
+ *   2. Inside a pod running that image, build + test the plugin.
  *
- * avec-moi has no systemd metadata pipeline, so the ubuntu-units / systemd-builder image builds
- * and the metadata-assembly stage are intentionally absent.
+ * On a release branch (NNN.x), if anything releasable landed since the last stable tag:
+ *   3. Publish a "<version>-dev" build to the Marketplace dev channel straight away.
+ *   4. Wait at a release gate (no pod held). "Publish now" releases immediately, "Abort" skips this
+ *      release, and if nobody answers within RELEASE_GATE_HOURS it publishes by default.
+ *   5. Publish <version> to the stable channel, then tag it v<version>.
+ *
+ * Each merge gets its own gate; once a newer build passes its gate, older builds still waiting are
+ * aborted (milestone), so a burst of merges ships once, newest first, never out of order.
+ *
+ * Unlike the systemd plugin there is no nightly build: avec-moi has no upstream input that changes
+ * without a commit, so merges are the only trigger. There is also no systemd metadata pipeline, so
+ * the ubuntu-units / systemd-builder image builds and the metadata-assembly stage are absent.
  */
 
-def buildDate = new Date().format("yyMMdd", TimeZone.getTimeZone('UTC'))
+isReleaseBranch = env.BRANCH_NAME ==~ /^([0-9][0-9][0-9]\.x)$/
 
-cron_string = ""
+RELEASE_GATE_HOURS = 8
 
-// Build nightly on a release branch
-if (BRANCH_NAME ==~ /^([0-9][0-9][0-9]\.x)$/) {
-  cron_string = "H 9 * * *"
-}
+// Set during "Build & Test" on a release branch: whether anything worth shipping landed since the
+// last stable tag, and the version the build produced.
+releasable = false
+pluginVersion = null
 
-isReleaseDay = new Date().format("E", TimeZone.getTimeZone('UTC')) == "Wed"
-
-def started_by_timer = currentBuild.getBuildCauses()[0]["shortDescription"].matches("Started by timer")
-echo "Started by timer: ${started_by_timer}"
-
-
-if (isReleaseDay && started_by_timer) {
-  releaseChannel = "default"
-} else {
-  releaseChannel = "dev"
-}
-
-echo "Release channel $releaseChannel"
+// Trusts GitHub's host key and points git at the CI deploy key (KEYFILE, from withCredentials).
+GIT_SSH_SETUP = '''
+  mkdir -p ~/.ssh/
+  cp /github-ssh-host-key/* ~/.ssh/
+  export GIT_SSH_COMMAND="ssh -i $KEYFILE"
+  git config --global user.email "jenkins@sjrx.net"
+  git config --global user.name "Jenkins CI System"
+'''
 
 def buildPodDefinition(workerPodImage, ciUtilsEnabled, kanikoEnabled) {
   // Pods that run Gradle (worker-pod) or kaniko are "heavy": at most one of them may be scheduled per node,
@@ -178,14 +182,11 @@ spec:
 
 pipeline {
   options {
-    // This is important because we are checking out git code at the same time and pushing it back up.
-    disableConcurrentBuilds()
+    // Builds may overlap: a build waiting at the release gate must not hold up the next merge. The
+    // milestone after the gate keeps releases in order instead, and only unique v<version> tags are pushed.
     timestamps()
     quietPeriod(1)
     //skipDefaultCheckout()
-  }
-  triggers {
-    cron(cron_string)
   }
   agent none
 
@@ -253,7 +254,7 @@ pipeline {
         }
       }
     }
-    stage("Build & Publish") {
+    stage("Build & Test") {
       agent {
         kubernetes {
           //cloud 'kubernetes'
@@ -271,47 +272,110 @@ pipeline {
             string(credentialsId: 'avec-moi-publish-token', variable: 'PUBLISH_TOKEN')
           ]
         ) {
-          withEnv(["RELEASE_CHANNEL=${releaseChannel}"]) {
-            sh("""
-              mkdir -p ./build
-              ./generate-changelog  > build/CHANGELOG
-              ./gradlew --no-daemon -I ./build-cache-init.gradle.kts -I ./repo-cache-init.gradle.kts --build-cache build buildPlugin -PbuildScan
-              """)
-            script {
-              if (env.BRANCH_NAME ==~ /^([0-9][0-9][0-9]\.x)$/) {
-                sh("""
-                echo "Tagging"
-                mkdir -p ~/.ssh/
+          sh("""
+            mkdir -p ./build
+            ./generate-changelog  > build/CHANGELOG
+            ./gradlew --no-daemon -I ./build-cache-init.gradle.kts -I ./repo-cache-init.gradle.kts --build-cache build buildPlugin -PbuildScan
+            """)
+          script {
+            pluginVersion = sh(script: '''
+              ls -1 ./build/distributions/*.zip | sort | tail -n 1 | sed -E "s/.+-(.+).zip$/\\1/g"
+              ''', returnStdout: true).trim()
+            echo "Plugin version ${pluginVersion}"
 
-                VERSION=\$(ls -1 ./build/distributions/*.zip | sort | tail -n 1 | sed -E "s/.+-(.+).zip\$/\\1/g")
-                cp /github-ssh-host-key/* ~/.ssh/
-                export GIT_SSH_COMMAND="ssh -i \$KEYFILE"
-                git config --global user.email "jenkins@sjrx.net"
-                git config --global user.name "Jenkins CI System"
-
-
-                echo "Current Version \$VERSION"
-
-                git remote add origin-ssh git@github.com:SJrX/avec-moi.git
-                git tag "v\${VERSION}"
-                git push origin-ssh --tags
-"""
-                )
-                sh("""
-                ./gradlew --no-daemon -I ./build-cache-init.gradle.kts --build-cache publishPluginStandalone -PbuildScan
-""")
-              }
-              else {
-                sh("""
-                echo "No tagging"
-""")
-              }
-
+            if (isReleaseBranch) {
+              // Releasable = any commit since the last stable tag that isn't ci/chore/docs/style/test
+              // housekeeping (or the release-branch automation's gradle.properties commit). With no
+              // stable tag yet, everything is releasable.
+              releasable = sh(script: GIT_SSH_SETUP + '''
+                git fetch --tags --force git@github.com:SJrX/avec-moi.git
+                last=$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null) || { echo "No stable tag yet"; exit 0; }
+                echo "Last stable tag: $last"
+                git log --no-merges --format=%s "$last"..HEAD \\
+                  | grep -v -E '^(ci|chore|docs|style|test)(\\(.+\\))?!?:' \\
+                  | grep -v '^Update gradle.properties' \\
+                  | grep .
+                ''', returnStatus: true) == 0
+              echo(releasable ? "Releasable changes since the last stable tag" : "Nothing to release since the last stable tag")
             }
 
-            archiveArtifacts artifacts: 'build/distributions/*.zip'
-            archiveArtifacts artifacts: 'build/reports/**'
+            if (releasable) {
+              // Same build, rebuilt with a -dev suffix: Marketplace versions must be unique, and the
+              // unsuffixed version is reserved for the stable upload after the gate.
+              withEnv(["PLUGIN_VERSION=${pluginVersion}-dev", "RELEASE_CHANNEL=dev"]) {
+                sh("""
+                  ./gradlew --no-daemon -I ./build-cache-init.gradle.kts -I ./repo-cache-init.gradle.kts --build-cache buildPlugin -PbuildScan
+                  ./gradlew --no-daemon -I ./build-cache-init.gradle.kts --build-cache publishPluginStandalone -PbuildScan
+                  """)
+              }
+              stash includes: "build/distributions/*-${pluginVersion}.zip", name: 'stable-plugin-zip'
+            }
           }
+
+          archiveArtifacts artifacts: 'build/distributions/*.zip'
+          archiveArtifacts artifacts: 'build/reports/**'
+        }
+      }
+    }
+    stage("Release Gate") {
+      // No agent: a build waiting here holds no pod or executor.
+      when {
+        expression { releasable }
+      }
+      steps {
+        script {
+          try {
+            timeout(time: RELEASE_GATE_HOURS, unit: 'HOURS') {
+              input message: "Publish ${pluginVersion} to the stable channel? It publishes automatically after ${RELEASE_GATE_HOURS} hours; Abort skips this release.",
+                    ok: 'Publish now'
+            }
+          } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
+            // Abort clicked, or superseded by a newer build: rethrow so nothing is published. Only a
+            // timeout means "nobody objected", so carry on.
+            if (!e.causes.any { it instanceof org.jenkinsci.plugins.workflow.steps.TimeoutStepExecution.ExceededTimeout }) {
+              throw e
+            }
+            echo "No answer within ${RELEASE_GATE_HOURS} hours; publishing by default"
+          }
+        }
+        // Passing this aborts every older build that hasn't, so an older release can't ship after a newer one.
+        milestone(ordinal: 100, label: 'release approved')
+      }
+    }
+    stage("Publish") {
+      when {
+        beforeAgent true
+        expression { releasable }
+      }
+      agent {
+        kubernetes {
+          //cloud 'kubernetes'
+          defaultContainer 'worker-pod'
+
+          // language=yaml
+          yaml buildPodDefinition("${env.DOCKER_REGISTRY_PREFIX}/avec-moi-build-environment:$buildEnvironmentHash", false,false)
+          //workspaceVolume hostPathWorkspaceVolume('/opt/jenkins/workspace')
+        }
+      }
+      steps {
+        withCredentials(
+          [
+            sshUserPrivateKey(credentialsId: 'ci-ssh-key', keyFileVariable: 'KEYFILE'),
+            string(credentialsId: 'avec-moi-publish-token', variable: 'PUBLISH_TOKEN')
+          ]
+        ) {
+          unstash 'stable-plugin-zip'
+          // PLUGIN_VERSION pins the version, so a gate that resolves after midnight still finds the zip.
+          withEnv(["PLUGIN_VERSION=${pluginVersion}", "RELEASE_CHANNEL=default"]) {
+            sh("""
+              ./gradlew --no-daemon -I ./build-cache-init.gradle.kts --build-cache publishPluginStandalone -PbuildScan
+              """)
+          }
+          // Tag only once it's actually on the Marketplace.
+          sh(GIT_SSH_SETUP + """
+            git tag "v${pluginVersion}"
+            git push git@github.com:SJrX/avec-moi.git "v${pluginVersion}"
+            """)
         }
       }
     }
