@@ -13,6 +13,9 @@ connects to. The agent designs a change, writes stubs that compile, and register
 **handoffs** — `(file, line, note)` spots for you to implement. A "Step Done" nudge in the
 editor lets you hand control back for review.
 
+> **Note:** Somewhat ironically, this project was 100% vibe coded with
+> [Claude Code](https://claude.com/claude-code).
+
 ## Features
 
  * In-IDE MCP server the agent connects to (configurable port; Origin/Host validated; shared-secret auth).
