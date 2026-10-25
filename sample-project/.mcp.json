@@ -2,7 +2,7 @@
   "mcpServers": {
     "avec-moi": {
       "type": "http",
-      "url": "http://localhost:8282/mcp"
+      "url": "http://localhost:32684/mcp"
     }
   }
 }
