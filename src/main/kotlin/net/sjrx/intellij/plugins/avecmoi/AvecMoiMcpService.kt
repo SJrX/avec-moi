@@ -1008,7 +1008,7 @@ class AvecMoiMcpService : Disposable {
   }
 
   companion object {
-    const val PORT = 8282
+    const val PORT = 32684
 
     /**
      * Accept a request only if it isn't browser-driven: a real MCP client sends no `Origin` and a

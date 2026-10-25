@@ -15,27 +15,27 @@ class McpOriginValidationTest {
 
   @Test
   fun aRealClientWithNoOriginAndLoopbackHostIsAllowed() {
-    assertTrue(ok(null, "localhost:8282"))
-    assertTrue(ok(null, "127.0.0.1:8282"))
+    assertTrue(ok(null, "localhost:32684"))
+    assertTrue(ok(null, "127.0.0.1:32684"))
     assertTrue(ok(null, null)) // minimal client, no headers
   }
 
   @Test
   fun aLoopbackOriginIsAllowed() {
-    assertTrue(ok("http://localhost:8282", "localhost:8282"))
-    assertTrue(ok("http://127.0.0.1:8282", "127.0.0.1:8282"))
-    assertTrue(ok("http://[::1]:8282", "[::1]:8282"))
+    assertTrue(ok("http://localhost:32684", "localhost:32684"))
+    assertTrue(ok("http://127.0.0.1:32684", "127.0.0.1:32684"))
+    assertTrue(ok("http://[::1]:32684", "[::1]:32684"))
   }
 
   @Test
   fun aWebsiteOriginIsRejected() {
-    assertFalse("browser CSRF", ok("http://evil.example.com", "localhost:8282"))
-    assertFalse("https site", ok("https://app.example.com", "127.0.0.1:8282"))
+    assertFalse("browser CSRF", ok("http://evil.example.com", "localhost:32684"))
+    assertFalse("https site", ok("https://app.example.com", "127.0.0.1:32684"))
   }
 
   @Test
   fun aNonLoopbackHostIsRejected() {
     assertFalse("DNS rebinding", ok(null, "evil.example.com"))
-    assertFalse(ok(null, "evil.example.com:8282"))
+    assertFalse(ok(null, "evil.example.com:32684"))
   }
 }
