@@ -1,6 +1,26 @@
 #!/bin/bash
+# Prints the Marketplace change notes (HTML): user-facing commits made since the initial-release
+# notes last changed, newest first, followed by those hand-written notes. Merges, dependabot, the
+# release-branch automation and housekeeping commits (including fix(build)/fix(ci)) are left out.
 
-echo "<h3>Changes</h3>"
-echo "<ul>"
-git log --format="%H %aE" | grep -v dependabot | head -n 100 | cut -d ' ' -f 1 | xargs -d "\n" -n 1 git log -n 1 "--pretty=format:<li><b>[%ad]</b> %s</li></br>%n" --date=format:%Y-%m-%d 2> /dev/null | grep -v -E "</b> (ci|chore|docs|build|style|refactor|test):" | head -n 20 | grep -v "Update gradle.properties" | sed -E "s%#([0-9]+)%\<a href='https://github.com/SJrX/avec-moi/issues/\1'>#\1</a>%g"
-echo "</ul>"
+INITIAL_NOTES="ci/initial-release-notes.html"
+base=$(git log -n 1 --format=%H -- "$INITIAL_NOTES")
+
+changes=$(
+  git log --no-merges --format="%aE%x09<li><b>[%ad]</b> %s</li></br>" --date=format:%Y-%m-%d ${base:+"$base"..HEAD} \
+    | grep -v "^[^"$'\t'"]*dependabot" | cut -f 2- \
+    | grep -v -E "</b> (ci|chore|docs|build|style|refactor|test|diag|revert)(\(.+\))?!?:" \
+    | grep -v -E "</b> [a-z]+\((build|ci)\)!?:" \
+    | grep -v "Update gradle.properties" \
+    | head -n 20 \
+    | sed -E "s%#([0-9]+)%\<a href='https://github.com/SJrX/avec-moi/issues/\1'>#\1</a>%g"
+)
+
+if [ -n "$changes" ]; then
+  echo "<h3>Changes</h3>"
+  echo "<ul>"
+  echo "$changes"
+  echo "</ul>"
+fi
+
+cat "$INITIAL_NOTES"
