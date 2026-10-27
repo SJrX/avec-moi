@@ -4,8 +4,46 @@
   <vendor email="vcolo@sjrx.net" url="https://sjrx.net">SJrX</vendor>
 
   <description><![CDATA[
-    Collaborative coding: the AI scaffolds and designs, you implement the load-bearing pieces,
-    the AI reviews. Keeps you engaged and your expertise sharp instead of watching code appear.
+    <p>
+      Collaborative coding with an AI agent, the other way round. Instead of the agent writing
+      everything while you watch, it designs the change and writes compiling scaffolding, <b>you
+      implement the parts that matter</b>, and the agent reviews your work. The goal is to keep you
+      engaged and fluent in your own codebase: "with me," not "for me."
+    </p>
+    <p>
+      Avec Moi runs a small MCP server inside the IDE that a terminal-based agent such as
+      <a href="https://claude.com/claude-code">Claude Code</a> connects to. You choose how involved
+      you want to be, project by project.
+    </p>
+    <h3>Features</h3>
+    <ul>
+      <li><b>Handoffs</b>: the agent marks the spots for you to implement, each with a note shown
+        inline in the editor. Jump between them with <i>Next/Previous Handoff</i>; they follow your
+        edits.</li>
+      <li><b>Step Done</b>, <b>Ask for a Hint</b> and <b>Do This Step</b>: tell the agent from the
+        editor that you've finished, want a nudge, or want it to take over a step. The message is
+        typed into the agent's terminal for you.</li>
+      <li><b>Per-project guidance</b>: record your goal, your familiarity with the technologies
+        involved, and how closely you want your code reviewed, so the agent scaffolds or hands off
+        accordingly.</li>
+      <li><b>Sessions</b>: separate sets of handoffs per task, which you can create, switch, rename
+        and complete.</li>
+      <li><b>Copy + Unwrap</b>: copy text from the terminal with its hard line wraps removed, for
+        long URLs, paths and prose.</li>
+    </ul>
+    <h3>Getting started</h3>
+    <ol>
+      <li>Open <i>Settings | Tools | Avec Moi</i> and copy the agent connect command.</li>
+      <li>Run it once in a terminal to register the IDE's MCP server with your agent.</li>
+      <li>Start the agent in the IDE's terminal and ask it to work on something with you.</li>
+    </ol>
+    <p>
+      The server listens only on localhost, rejects browser requests, and requires a secret token
+      that only your configured agent knows.
+    </p>
+    <p>
+      <a href="https://github.com/SJrX/avec-moi">Source code and issue tracker</a>
+    </p>
   ]]></description>
 
   <depends>com.intellij.modules.platform</depends>
