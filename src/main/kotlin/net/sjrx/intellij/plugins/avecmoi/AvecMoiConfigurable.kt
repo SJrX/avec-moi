@@ -14,10 +14,12 @@ import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import java.awt.datatransfer.StringSelection
 import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.COLUMNS_LARGE
 import com.intellij.ui.dsl.builder.LabelPosition
 import com.intellij.ui.dsl.builder.bind
 import com.intellij.ui.dsl.builder.bindIntText
 import com.intellij.ui.dsl.builder.bindText
+import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.table.TableView
 import com.intellij.util.ui.ColumnInfo
@@ -80,7 +82,8 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
           "re-run the connect command below with the new port afterward.",
       )
       row("Agent connect command:") {
-        connectCommandField = textField().align(AlignX.FILL)
+        // Cap the preferred width; otherwise the field asks for the full ~200-char command and widens the page.
+        connectCommandField = textField().columns(COLUMNS_LARGE).align(AlignX.FILL)
           .applyToComponent { isEditable = false } // read-only but still selectable/copyable
           .component
         connectCommandField.text = service<AvecMoiMcpService>().connectCommand()
@@ -98,10 +101,10 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
 
     group("Agent Guidance") {
       row {
-        textArea().align(AlignX.FILL)
+        textArea().columns(COLUMNS_LARGE).align(AlignX.FILL)
           .label("Goal (this project):", LabelPosition.TOP)
           .bindText(settings::goal)
-          .applyToComponent { rows = 2 }
+          .applyToComponent { rows = 5; lineWrap = true; wrapStyleWord = true }
       }
 
       row {
@@ -113,24 +116,23 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
           }
           .createPanel()
         cell(panel).align(AlignX.FILL)
-          .label(
-            "Familiarity & implementation interest (self-reported — add whatever's relevant). " +
-              "Implementation interest is how much you want to write it yourself, not how well you know " +
-              "it. Scope: 'All projects' rows are remembered IDE-wide; a 'This project' row of the same " +
-              "subject overrides them here:",
-            LabelPosition.TOP,
-          )
-      }
+          .label("Familiarity & implementation interest (self-reported — add whatever's relevant):", LabelPosition.TOP)
+      }.rowComment(
+        // A comment wraps; a label doesn't, and this much text in one widened the whole page.
+        "Implementation interest is how much you want to write it yourself, not how well you know " +
+          "it. Scope: 'All projects' rows are remembered IDE-wide; a 'This project' row of the same " +
+          "subject overrides them here.",
+      )
 
       buttonsGroup("Review depth when you hit \"Step Done\":") {
         ReviewLevel.entries.forEach { level -> row { radioButton(level.label, level) } }
       }.bind(settings::reviewLevel)
 
       row {
-        textArea().align(AlignX.FILL)
+        textArea().columns(COLUMNS_LARGE).align(AlignX.FILL)
           .label("Extra context (appended verbatim):", LabelPosition.TOP)
           .bindText(settings::extraContext)
-          .applyToComponent { rows = 3 }
+          .applyToComponent { rows = 5; lineWrap = true; wrapStyleWord = true }
       }
 
       row {
