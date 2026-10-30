@@ -88,6 +88,41 @@ class AvecMoiUnwrapTest {
     assertEquals("nothing to unwrap here", space("nothing to unwrap here"))
   }
 
+  // --- With the terminal width known: the word-wrap test separates real newlines from wraps. ---
+
+  @Test fun aRealNewlineBetweenIndentedCodeLinesIsKeptWhenTheWidthIsKnown() {
+    // Setup: Claude Code's code block — every line indented, so indentation alone can't tell the
+    // real newline after the short first line (26 chars) from the wrap after "replace" (36 chars,
+    // and "internal" wouldn't have fitted in 40 columns).
+    val copied = "  git push -u origin fix/x\n  gh pr create --title \"fix: replace\n  internal\""
+
+    // Exercise:
+    val result = AvecMoiUnwrap.unwrap(copied, " ", columns = 40)
+
+    // Verify: the command boundary survives; only the wrap is rejoined.
+    assertEquals("  git push -u origin fix/x\n  gh pr create --title \"fix: replace internal\"", result)
+  }
+
+  @Test fun aMidTokenBreakAtTheEdgeIsJoinedWhenTheWidthIsKnown() {
+    // Setup: a URL filling the full 40 columns, continued on the next line.
+    val copied = "  https://example.com/aaaaaaaaaaaaaaaaaa\n  aaaa"
+
+    // Exercise:
+    val result = AvecMoiUnwrap.unwrap(copied, "", columns = 40)
+
+    // Verify:
+    assertEquals("  https://example.com/aaaaaaaaaaaaaaaaaaaaaa", result)
+  }
+
+  @Test fun aWrapAFewColumnsShortOfTheEdgeStillCountsAsAWrap() {
+    // Setup: a 29-char line in 30 columns; a 1-char next word would just have fitted, but agents
+    // wrap slightly short of the edge, so this is within the slack.
+    val copied = "  one two three four five six\n  x"
+
+    // Exercise / Verify:
+    assertEquals("  one two three four five six x", AvecMoiUnwrap.unwrap(copied, " ", columns = 30))
+  }
+
   @Test fun anEmptyStringIsEmpty() {
     // Setup / Exercise / Verify:
     assertEquals("", join(""))
