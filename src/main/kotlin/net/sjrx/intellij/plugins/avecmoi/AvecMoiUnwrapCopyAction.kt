@@ -41,7 +41,8 @@ abstract class AvecMoiUnwrapCopyActionBase(private val separator: String) : AnAc
     val text = selectedText(e)?.takeIf { it.isNotEmpty() }
       ?: clipboardText()
       ?: return
-    CopyPasteManager.getInstance().setContents(StringSelection(AvecMoiUnwrap.unwrap(text, separator)))
+    val columns = e.getData(TerminalView.DATA_KEY)?.gridSize?.columns
+    CopyPasteManager.getInstance().setContents(StringSelection(AvecMoiUnwrap.unwrap(text, separator, columns)))
   }
 
   /**
