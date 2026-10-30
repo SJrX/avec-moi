@@ -136,7 +136,6 @@ class AvecMoiTerminalService(private val project: Project) {
     val diag = "detected=${all.size} names=${all.map { it.name }} | toolWindow=${tw != null} " +
       "contents=${runCatching { tw?.contentManager?.contents?.size }.getOrNull()} " +
       "reworkedTabs=${reworked.size} " +
-      "classicWidgets=${runCatching { mgr?.widgets?.size }.getOrNull()} " +
       "terminalWidgets=${runCatching { mgr?.terminalWidgets?.size }.getOrNull()}"
     if (diag != lastEmptyDiag) {
       lastEmptyDiag = diag

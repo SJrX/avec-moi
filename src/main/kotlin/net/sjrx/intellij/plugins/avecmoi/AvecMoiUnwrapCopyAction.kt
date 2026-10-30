@@ -7,7 +7,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.ide.CopyPasteManager
-import com.intellij.terminal.actions.TerminalActionUtil
+import com.intellij.terminal.frontend.view.TerminalView
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 
@@ -17,9 +17,9 @@ import java.awt.datatransfer.StringSelection
  * what a broken line is rejoined with — nothing (URLs/paths) or a single space (prose) — since which
  * one is right depends on the selection and only the human knows.
  *
- * Reads the selection from the reworked terminal's editor (its output is a real [Editor], read via
- * the terminal's own [TerminalActionUtil.EDITOR_KEY]), falling back to the clipboard so "copy first,
- * then unwrap" still works. avec-moi targets the reworked terminal only; the classic engine isn't
+ * Reads the selection from the reworked terminal's public [TerminalView] (its text selection model),
+ * falling back to a generic [Editor] selection and then the clipboard so "copy first, then unwrap"
+ * still works. avec-moi targets the reworked terminal only; the classic engine isn't
  * supported.
  */
 abstract class AvecMoiUnwrapCopyActionBase(private val separator: String) : AnAction() {
@@ -34,25 +34,29 @@ abstract class AvecMoiUnwrapCopyActionBase(private val separator: String) : AnAc
     // Mirror the sibling Copy action: shown only when there's a terminal selection to act on. The
     // clipboard fallback in actionPerformed is for other invocation paths, not menu enablement —
     // reading the system clipboard on every menu update would be needlessly heavy.
-    e.presentation.isEnabledAndVisible = terminalEditor(e)?.selectionModel?.hasSelection() == true
+    e.presentation.isEnabledAndVisible = !selectedText(e).isNullOrEmpty()
   }
 
   override fun actionPerformed(e: AnActionEvent) {
-    val text = terminalEditor(e)?.selectionModel?.selectedText?.takeIf { it.isNotEmpty() }
+    val text = selectedText(e)?.takeIf { it.isNotEmpty() }
       ?: clipboardText()
       ?: return
     CopyPasteManager.getInstance().setContents(StringSelection(AvecMoiUnwrap.unwrap(text, separator)))
   }
 
   /**
-   * The editor backing the reworked terminal under the cursor. That terminal's context-menu data
-   * context exposes its editor ONLY under [TerminalActionUtil.EDITOR_KEY] (not [CommonDataKeys.EDITOR]
-   * — its DataContextWrapper special-cases just that one key), which is why gating on the generic
-   * editor key hid this action entirely. We read the terminal key first, exactly like the built-in
-   * Terminal.CopySelectedText, and fall back to the generic key for any other host.
+   * The selected text in the reworked terminal under the cursor. That terminal's context-menu data
+   * context does NOT expose its editor under [CommonDataKeys.EDITOR] (gating on that hid this action
+   * entirely), and its own editor key is internal API, so we read the selection through the public
+   * [TerminalView.DATA_KEY] it also publishes. Falls back to the generic editor for any other host.
    */
-  private fun terminalEditor(e: AnActionEvent): Editor? =
-    e.getData(TerminalActionUtil.EDITOR_KEY) ?: e.getData(CommonDataKeys.EDITOR)
+  private fun selectedText(e: AnActionEvent): String? {
+    e.getData(TerminalView.DATA_KEY)?.let { view ->
+      val selection = view.textSelectionModel.selection ?: return null
+      return view.outputModels.active.value.getText(selection.startOffset, selection.endOffset).toString()
+    }
+    return e.getData(CommonDataKeys.EDITOR)?.selectionModel?.selectedText
+  }
 
   /** The clipboard's current text, or null if empty / not text / unreadable. */
   private fun clipboardText(): String? =
