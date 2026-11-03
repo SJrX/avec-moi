@@ -1,5 +1,6 @@
 package net.sjrx.intellij.plugins.avecmoi
 
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.PersistentStateComponent
@@ -12,6 +13,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.util.messages.Topic
 import com.intellij.util.xmlb.annotations.XCollection
+import javax.swing.Icon
 
 /** Fired (on the publisher's thread) whenever the sessions/handoffs change. */
 fun interface AvecMoiRingListener {
@@ -28,11 +30,14 @@ fun interface AvecMoiRingListener {
  *   item: its own list + index namespace + tree folder, no done-state, not counted, not stepped.
  *
  * TODO and READ live in the WORK list (one namespace); REFERENCE lives in its own.
+ *
+ * Each kind has its own [icon] — a pencil to write, an eye to read, a bookmark to keep — so they're
+ * told apart at a glance; a new kind can't be added without one.
  */
-enum class HandoffKind(val label: String) {
-  TODO("To do"),
-  READ("Read"),
-  REFERENCE("Reference");
+enum class HandoffKind(val label: String, val icon: Icon) {
+  TODO("To do", AllIcons.Actions.Edit),
+  READ("Read", AllIcons.Actions.Preview),
+  REFERENCE("Reference", AllIcons.Nodes.Bookmark);
 
   /** References are the odd one out — a separate namespace, not a completable work item. */
   val isReference: Boolean get() = this == REFERENCE
