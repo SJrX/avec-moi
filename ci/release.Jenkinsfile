@@ -12,8 +12,9 @@
  *      release, and if nobody answers within RELEASE_GATE_HOURS it publishes by default.
  *   5. Publish <version> to the stable channel, then tag it v<version>.
  *
- * Each merge gets its own gate; once a newer build passes its gate, older builds still waiting are
- * aborted (milestone), so a burst of merges ships once, newest first, never out of order.
+ * A new build on the branch aborts the previous one wherever it is, gate included, so a burst of
+ * merges ships once (the newest), RELEASE_GATE_HOURS after the last merge. The milestone after the
+ * gate is a backstop that keeps releases in order.
  *
  * Unlike the systemd plugin there is no nightly build: avec-moi has no upstream input that changes
  * without a commit, so merges are the only trigger. There is also no systemd metadata pipeline, so
@@ -182,8 +183,10 @@ spec:
 
 pipeline {
   options {
-    // Builds may overlap: a build waiting at the release gate must not hold up the next merge. The
-    // milestone after the gate keeps releases in order instead, and only unique v<version> tags are pushed.
+    // A new build of this branch supersedes the previous one, even one waiting at the release gate, so
+    // the gate's timer restarts from the newest merge rather than every merge shipping separately.
+    // (Multibranch: only builds of the same branch or PR are affected.)
+    disableConcurrentBuilds(abortPrevious: true)
     timestamps()
     quietPeriod(1)
     //skipDefaultCheckout()
