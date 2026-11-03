@@ -273,6 +273,74 @@ class AvecMoiMcpService : Disposable {
           "scaffold vs hand off, and how you review.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
+      addJsonObject {
+        put("name", "set_familiarity")
+        put(
+          "description",
+          "Add, update or remove rows in the human's familiarity table (the one get_avecmoi_guidance " +
+            "reports), so they don't have to fill it in by hand. ONLY write what the human has confirmed " +
+            "in conversation — never your own guesses about their skill. An existing row (same subject, " +
+            "same scope) gets only the fields you pass. Returns what changed.",
+        )
+        putJsonObject("inputSchema") {
+          put("type", "object")
+          putJsonObject("properties") {
+            putJsonObject("projectPath") {
+              put("type", "string"); put("description", "Absolute path inside the target project (e.g. your cwd).")
+            }
+            putJsonObject("entries") {
+              put("type", "array")
+              put("description", "Rows to add or update.")
+              putJsonObject("items") {
+                put("type", "object")
+                putJsonObject("properties") {
+                  putJsonObject("subject") {
+                    put("type", "string")
+                    put("description", "A language, framework, library, or area of the code/domain, e.g. " +
+                      "\"Kotlin\", \"IntelliJ Platform: inlays\". Prefer a handful of meaningful subjects " +
+                      "over an exhaustive list.")
+                  }
+                  putJsonObject("level") {
+                    put("type", "string")
+                    putJsonArray("enum") { Familiarity.entries.forEach { add(it.name.lowercase()) } }
+                    put("description", "How well they know it. Required for a new row, unless interest is " +
+                      "'uninterested' (then the level doesn't matter).")
+                  }
+                  putJsonObject("interest") {
+                    put("type", "string")
+                    putJsonArray("enum") { Interest.entries.forEach { add(it.name.lowercase()) } }
+                    put("description", "How much they WANT to write it themselves. 'uninterested' = you " +
+                      "handle it; also the way to record \"don't ask me about this\". Default 'neutral'.")
+                  }
+                  putJsonObject("scope") {
+                    put("type", "string")
+                    putJsonArray("enum") { add("global"); add("project") }
+                    put("description", "'global' for facts about the developer that hold everywhere " +
+                      "(\"rusty in Kotlin\"); 'project' for things specific to this codebase.")
+                  }
+                }
+                putJsonArray("required") { add("subject"); add("scope") }
+              }
+            }
+            putJsonObject("remove") {
+              put("type", "array")
+              put("description", "Rows to delete, by subject and scope.")
+              putJsonObject("items") {
+                put("type", "object")
+                putJsonObject("properties") {
+                  putJsonObject("subject") { put("type", "string") }
+                  putJsonObject("scope") {
+                    put("type", "string")
+                    putJsonArray("enum") { add("global"); add("project") }
+                  }
+                }
+                putJsonArray("required") { add("subject"); add("scope") }
+              }
+            }
+          }
+          putJsonArray("required") { add("projectPath") }
+        }
+      }
       tool(
         "register_handoffs",
         "Register the spots where you left work for the human to implement, so the IDE can navigate " +
@@ -541,6 +609,7 @@ class AvecMoiMcpService : Disposable {
         })
       }
       "get_avecmoi_guidance" -> getGuidance(args)
+      "set_familiarity" -> setFamiliarity(args)
       "register_handoffs" -> registerHandoffs(args)
       "add_handoff" -> addHandoff(args)
       "update_handoff" -> updateHandoff(args)
@@ -592,6 +661,68 @@ class AvecMoiMcpService : Disposable {
     val project = resolveProject(path)
       ?: return textContent("No open project matches path: $path", isError = true)
     return textContent(project.service<AvecMoiSettingsService>().guidance(), isError = false)
+  }
+
+  private fun setFamiliarity(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    fun wireEnum(o: JsonObject, field: String) = o[field]?.jsonPrimitive?.contentOrNull?.trim()?.lowercase()
+    fun scopeOf(o: JsonObject): FamiliarityScope? = when (wireEnum(o, "scope")) {
+      "global" -> FamiliarityScope.GLOBAL
+      "project" -> FamiliarityScope.PROJECT
+      else -> null
+    }
+    val entries = (args?.get("entries") as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+    val removals = (args?.get("remove") as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+    if (entries.isEmpty() && removals.isEmpty()) {
+      return textContent("Nothing to do — pass 'entries' and/or 'remove'.", isError = true)
+    }
+    val problems = ArrayList<String>()
+    val changes = HashMap<FamiliarityScope, MutableList<AvecMoiGuidance.FamiliarityChange>>()
+    val removes = HashMap<FamiliarityScope, MutableList<String>>()
+    for (o in entries) {
+      val subject = o["subject"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+      val scope = scopeOf(o)
+      val levelWire = wireEnum(o, "level")
+      val interestWire = wireEnum(o, "interest")
+      val level = levelWire?.let { w -> Familiarity.entries.firstOrNull { it.name.lowercase() == w } }
+      val interest = interestWire?.let { w -> Interest.entries.firstOrNull { it.name.lowercase() == w } }
+      when {
+        subject == null -> problems.add("an entry has no subject")
+        scope == null -> problems.add("'$subject': scope must be 'global' or 'project'")
+        levelWire != null && level == null -> problems.add("'$subject': unknown level '$levelWire'")
+        interestWire != null && interest == null -> problems.add("'$subject': unknown interest '$interestWire'")
+        else -> changes.getOrPut(scope) { mutableListOf() }.add(AvecMoiGuidance.FamiliarityChange(subject, level, interest))
+      }
+    }
+    for (o in removals) {
+      val subject = o["subject"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+      val scope = scopeOf(o)
+      if (subject == null || scope == null) problems.add("a removal needs a subject and a scope of 'global' or 'project'")
+      else removes.getOrPut(scope) { mutableListOf() }.add(subject)
+    }
+
+    val settings = project.service<AvecMoiSettingsService>()
+    val global = service<AvecMoiGlobalSettings>()
+    val report = StringBuilder()
+    for (scope in FamiliarityScope.entries) {
+      val c = changes[scope].orEmpty()
+      val r = removes[scope].orEmpty()
+      if (c.isEmpty() && r.isEmpty()) continue
+      val current = if (scope == FamiliarityScope.GLOBAL) global.familiarity else settings.familiarity
+      val result = AvecMoiGuidance.applyFamiliarity(current, c, r, scope)
+      if (scope == FamiliarityScope.GLOBAL) global.familiarity = result.rows.toMutableList()
+      else settings.familiarity = result.rows.toMutableList()
+      val where = if (scope == FamiliarityScope.GLOBAL) "all projects" else "this project"
+      if (result.added.isNotEmpty()) report.appendLine("Added ($where): ${result.added.joinToString()}")
+      if (result.updated.isNotEmpty()) report.appendLine("Updated ($where): ${result.updated.joinToString()}")
+      if (result.removed.isNotEmpty()) report.appendLine("Removed ($where): ${result.removed.joinToString()}")
+      result.rejected.forEach { problems.add("'$it' is new, so it needs a level (ask the human) — not added") }
+    }
+    if (problems.isNotEmpty()) report.appendLine("Problems:\n" + problems.joinToString("\n") { "  - $it" })
+    val text = report.toString().trim().ifEmpty { "No changes." }
+    return textContent(text, isError = problems.isNotEmpty())
   }
 
   /**
@@ -1115,7 +1246,7 @@ class AvecMoiMcpService : Disposable {
      * agent can detect it's on a stale tool list after a rebuild ("server has N, I see fewer").
      */
     val TOOL_NAMES = listOf(
-      "ping", "list_projects", "resolve_project", "get_avecmoi_guidance", "register_handoffs",
+      "ping", "list_projects", "resolve_project", "get_avecmoi_guidance", "set_familiarity", "register_handoffs",
       "add_handoff", "update_handoff", "navigate_to",
       "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
       "create_session", "list_sessions", "switch_session", "rename_session", "complete_session",
@@ -1144,6 +1275,17 @@ class AvecMoiMcpService : Disposable {
         human wants to work here — their goal, self-reported familiarity, and preferred review depth —
         and let it shape how much you scaffold vs hand off, and how you review. Re-fetch it after a
         context reset. (It may be empty if they haven't set anything; that's fine.)
+      - FILLING IN FAMILIARITY: people rarely fill the familiarity table in by hand, but it's what tells
+        you how to pitch handoffs (and when to add phrasebooks). When it's empty, or a task touches a
+        language/framework/area it doesn't cover, look at the project (file types, build files,
+        dependencies, the main concepts in play) and ask the human about the gaps in ONE short message —
+        a handful of meaningful subjects, not a questionnaire, and easy to answer lazily. Then record
+        their answers with `set_familiarity`. Write only after confirming with the human — no guesses:
+        proposing "looks like you're comfortable with Gradle?" is fine, but write it only once they agree.
+        Use scope 'global' for facts about the developer that hold everywhere ("rusty in Kotlin") and
+        'project' for things specific to this codebase. If they don't want to be asked about something,
+        record it with interest 'uninterested' so you (and later sessions) stop asking. Don't re-ask
+        about subjects already in the table; if they correct a level, update it.
       - Design the change and write stubs that at least parse / compile — no syntax errors (e.g.
         Kotlin `TODO("...")`, Python `raise NotImplementedError`) — so the human implements into
         working scaffolding rather than debugging yours. It need NOT be a fully green build: failing
