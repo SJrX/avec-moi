@@ -194,5 +194,10 @@ tasks.register<org.jetbrains.intellij.platform.gradle.tasks.PublishPluginTask>("
   // pluginVersion is based on SemVer (https://semver.org) and supports pre-release labels.
   channels.set(listOf(System.getenv("RELEASE_CHANNEL") ?: "dev"))
   host.set("https://plugins.jetbrains.com")
-  archiveFiles.from(project.file("build/distributions/${project.name}-${project.version}.zip"))
+  // setFrom (not from) and no dependsOn: the platform plugin's defaults point this at signPlugin's
+  // output and depend on it, which drags in a full rebuild. On the Publish pod that rebuild has no
+  // build/CHANGELOG, so it overwrote the gated zip with one whose change notes said "Development
+  // Build". Upload exactly the zip that's on disk.
+  archiveFiles.setFrom(project.file("build/distributions/${project.name}-${project.version}.zip"))
+  setDependsOn(emptyList<Any>())
 }
