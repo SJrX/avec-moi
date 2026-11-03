@@ -45,6 +45,13 @@ enum class HandoffKind(val label: String) {
 }
 
 /**
+ * One phrasebook entry: a short, general idiom or useful API in the language/framework a handoff needs
+ * ([code]), with a one-line [gloss] of what it's for. A pointer to the thing the human is rusty in or
+ * new to — never the handoff's answer.
+ */
+data class Phrase(val code: String, val gloss: String = "")
+
+/**
  * Per-project store of avec-moi sessions. A session is a named container of handoffs; one session is
  * "active" (the one navigation and handoff tools operate on), the rest are open or historical.
  *
@@ -59,7 +66,13 @@ enum class HandoffKind(val label: String) {
 class AvecMoiRingService(private val project: Project) :
   PersistentStateComponent<AvecMoiRingService.PersistedState>, Disposable {
 
-  data class HandoffSpec(val file: String, val line: Int, val note: String, val kind: HandoffKind = HandoffKind.TODO)
+  data class HandoffSpec(
+    val file: String,
+    val line: Int,
+    val note: String,
+    val kind: HandoffKind = HandoffKind.TODO,
+    val phrases: List<Phrase> = emptyList(),
+  )
 
   class Handoff(
     val file: String,
@@ -67,6 +80,7 @@ class AvecMoiRingService(private val project: Project) :
     var marker: RangeMarker?,
     private val fallbackLine: Int,
     val kind: HandoffKind = HandoffKind.TODO,
+    var phrases: List<Phrase> = emptyList(),
   ) {
     var done: Boolean = false
 
@@ -221,9 +235,17 @@ class AvecMoiRingService(private val project: Project) :
 
   /**
    * Edit an existing handoff in place, preserving its position and done-state. Only non-null fields
-   * change. If [file] or [line] changes, the RangeMarker is re-anchored; a note-only edit keeps it.
+   * change ([phrases] = an empty list clears the phrasebook). If [file] or [line] changes, the
+   * RangeMarker is re-anchored; a note/phrases-only edit keeps it.
    */
-  fun update(index: Int, note: String?, file: String?, line: Int?, reference: Boolean = false): Boolean {
+  fun update(
+    index: Int,
+    note: String?,
+    file: String?,
+    line: Int?,
+    reference: Boolean = false,
+    phrases: List<Phrase>? = null,
+  ): Boolean {
     val ok = synchronized(this) {
       val s = activeLocked() ?: return@synchronized false
       val target = s.list(reference)
@@ -235,12 +257,13 @@ class AvecMoiRingService(private val project: Project) :
       if (fileChanged || lineChanged) {
         old.marker?.dispose()
         val rebuilt = buildHandoffs(
-          listOf(HandoffSpec(file ?: old.file, line ?: oldLine, note ?: old.note, old.kind)),
+          listOf(HandoffSpec(file ?: old.file, line ?: oldLine, note ?: old.note, old.kind, phrases ?: old.phrases)),
         ).first()
         rebuilt.done = old.done
         target[index] = rebuilt
-      } else if (note != null) {
-        old.note = note
+      } else {
+        if (note != null) old.note = note
+        if (phrases != null) old.phrases = phrases
       }
       true
     }
@@ -351,7 +374,9 @@ class AvecMoiRingService(private val project: Project) :
 
   private fun buildHandoffs(specs: List<HandoffSpec>): List<Handoff> =
     runReadActionBlocking {
-      specs.map { spec -> Handoff(spec.file, spec.note, createMarker(spec.file, spec.line), spec.line, spec.kind) }
+      specs.map { spec ->
+        Handoff(spec.file, spec.note, createMarker(spec.file, spec.line), spec.line, spec.kind, spec.phrases)
+      }
     }
 
   private fun createMarker(file: String, line1Based: Int): RangeMarker? {
@@ -390,6 +415,14 @@ class AvecMoiRingService(private val project: Project) :
     var note: String = ""
     var done: Boolean = false
     var kind: HandoffKind = HandoffKind.TODO
+
+    @get:XCollection
+    var phrases: MutableList<PhraseState> = mutableListOf()
+  }
+
+  class PhraseState {
+    var code: String = ""
+    var gloss: String = ""
   }
 
   override fun getState(): PersistedState {
@@ -409,6 +442,7 @@ class AvecMoiRingService(private val project: Project) :
           it.note = h.note
           it.done = h.done
           it.kind = h.kind
+          it.phrases = h.phrases.mapTo(mutableListOf()) { p -> PhraseState().also { ps -> ps.code = p.code; ps.gloss = p.gloss } }
         }
         s.handoffs.forEach { ss.handoffs.add(persist(it)) }
         s.references.forEach { ss.references.add(persist(it)) }
@@ -427,7 +461,9 @@ class AvecMoiRingService(private val project: Project) :
       for (ss in state.sessions) {
         val s = Session(ss.id, ss.name, ss.branch)
         s.historical = ss.historical
-        fun restore(hs: HandoffState) = Handoff(hs.file, hs.note, null, hs.line, hs.kind).also { it.done = hs.done }
+        fun restore(hs: HandoffState) =
+          Handoff(hs.file, hs.note, null, hs.line, hs.kind, hs.phrases.map { Phrase(it.code, it.gloss) })
+            .also { it.done = hs.done }
         ss.handoffs.forEach { s.handoffs.add(restore(it)) }
         ss.references.forEach { s.references.add(restore(it)) }
         sessions.add(s)

@@ -87,6 +87,9 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
   /** A handoff's note (distinguishes note child nodes from handoff nodes in the renderer). */
   private class Note(val text: String)
 
+  /** Header of a handoff's phrasebook; its children are the [Phrase]s. */
+  private object PhrasebookHeader
+
   private val root = DefaultMutableTreeNode()
   private val treeModel = DefaultTreeModel(root)
   private val doneAttr = SimpleTextAttributes(SimpleTextAttributes.STYLE_STRIKEOUT, JBColor.GRAY)
@@ -208,7 +211,25 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
   }
 
   private fun handoffNode(handoff: AvecMoiRingService.Handoff): DefaultMutableTreeNode =
-    DefaultMutableTreeNode(handoff).apply { add(DefaultMutableTreeNode(Note(handoff.note))) }
+    DefaultMutableTreeNode(handoff).apply {
+      add(DefaultMutableTreeNode(Note(handoff.note)))
+      if (handoff.phrases.isNotEmpty()) {
+        add(DefaultMutableTreeNode(PhrasebookHeader).apply { handoff.phrases.forEach { add(DefaultMutableTreeNode(it)) } })
+      }
+    }
+
+  /** The handoff row [node] belongs to: itself, or the nearest handoff above a note/phrasebook row. */
+  private fun owningHandoffNode(node: DefaultMutableTreeNode?): DefaultMutableTreeNode? {
+    var n = node
+    while (n != null) {
+      when (n.userObject) {
+        is AvecMoiRingService.Handoff -> return n
+        is Note, PhrasebookHeader, is Phrase -> n = n.parent as? DefaultMutableTreeNode
+        else -> return null
+      }
+    }
+    return null
+  }
 
   /** Expand group headers + the active session, with todo handoffs open and done ones collapsed. */
   private fun expandDefault() {
@@ -266,22 +287,13 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
 
   private fun onDoubleClick() {
     val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return
-    when (val obj = node.userObject) {
-      is AvecMoiRingService.Handoff -> navigate(obj)
-      is Note -> ((node.parent as? DefaultMutableTreeNode)?.userObject as? AvecMoiRingService.Handoff)?.let { navigate(it) }
-      else -> {}
-    }
+    (owningHandoffNode(node)?.userObject as? AvecMoiRingService.Handoff)?.let { navigate(it) }
   }
 
   /** Fill the note pane from the current selection (a handoff row, or a note child of one). */
   private fun updateNoteDetail() {
     if (noteDetail.isFocusOwner) return // a background reload must not clobber an in-progress edit
-    val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode
-    val handoffNode = when (node?.userObject) {
-      is AvecMoiRingService.Handoff -> node
-      is Note -> node.parent as? DefaultMutableTreeNode
-      else -> null
-    }
+    val handoffNode = owningHandoffNode(tree.lastSelectedPathComponent as? DefaultMutableTreeNode)
     val handoff = handoffNode?.userObject as? AvecMoiRingService.Handoff
     shownHandoff = handoff
     shownHandoffNode = handoffNode
@@ -410,6 +422,15 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
         is Note -> {
           icon = AllIcons.General.Balloon
           append(obj.text.ifBlank { "(no note)" }, SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
+        }
+        PhrasebookHeader -> {
+          icon = AllIcons.Actions.IntentionBulb
+          append("Phrasebook", SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
+          append("  ${node.childCount}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+        }
+        is Phrase -> {
+          append(obj.code, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+          if (obj.gloss.isNotBlank()) append("${AvecMoiPhrasebook.GLOSS_SEPARATOR}${obj.gloss}", SimpleTextAttributes.GRAYED_ITALIC_ATTRIBUTES)
         }
         else -> {}
       }

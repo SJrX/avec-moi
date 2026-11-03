@@ -57,6 +57,27 @@ class AvecMoiPersistenceSerializationTest : AbstractAvecMoiTest() {
     assertEquals(HandoffKind.REFERENCE, reloaded.references()[0].kind)
   }
 
+  fun testPhrasebooksSurviveSerialization() {
+    // Fixture Setup — a phrasebook on a work handoff and on a reference
+    ring.createSession("Feature", null)
+    ring.set(
+      listOf(
+        spec(file = "A.kt", note = "implement").copy(phrases = listOf(Phrase("a ?: b", "elvis"), Phrase("xs.map { it }"))),
+        spec(file = "C.kt", note = "context").copy(kind = HandoffKind.REFERENCE, phrases = listOf(Phrase("x.let { }", "scope fn"))),
+        spec(file = "D.kt", note = "none"),
+      ),
+    )
+
+    // Exercise SUT — full XML round-trip
+    val restored = XmlSerializer.deserialize(XmlSerializer.serialize(ring.getState()), AvecMoiRingService.PersistedState::class.java)
+    val reloaded = AvecMoiRingService(project).also { it.loadState(restored) }
+
+    // Verification
+    assertEquals(listOf(Phrase("a ?: b", "elvis"), Phrase("xs.map { it }")), reloaded.all()[0].phrases)
+    assertEquals(emptyList<Phrase>(), reloaded.all()[1].phrases)
+    assertEquals(listOf(Phrase("x.let { }", "scope fn")), reloaded.references().single().phrases)
+  }
+
   private fun familiarity(subject: String, level: Familiarity, interest: Interest, scope: FamiliarityScope) =
     FamiliarityEntry().also { it.subject = subject; it.level = level; it.interest = interest; it.scope = scope }
 
