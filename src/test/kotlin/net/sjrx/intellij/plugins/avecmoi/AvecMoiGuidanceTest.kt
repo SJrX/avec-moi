@@ -129,4 +129,72 @@ class AvecMoiGuidanceTest {
     assertTrue(brief.contains("Additional context from the human:"))
     assertTrue(brief.contains("Prefer immutable data."))
   }
+
+  // --- applyFamiliarity ------------------------------------------------------------------------
+
+  private fun change(subject: String, level: Familiarity? = null, interest: Interest? = null) =
+    AvecMoiGuidance.FamiliarityChange(subject, level, interest)
+
+  private fun apply(rows: List<FamiliarityEntry>, vararg changes: AvecMoiGuidance.FamiliarityChange, remove: List<String> = emptyList()) =
+    AvecMoiGuidance.applyFamiliarity(rows, changes.toList(), remove, FamiliarityScope.PROJECT)
+
+  private fun List<FamiliarityEntry>.asTriples() = map { Triple(it.subject, it.level, it.interest) }
+
+  @Test
+  fun aNewSubjectIsAddedWithNeutralInterestByDefault() {
+    val result = apply(emptyList(), change("Kotlin", Familiarity.RUSTY))
+    assertEquals(listOf(Triple("Kotlin", Familiarity.RUSTY, Interest.NEUTRAL)), result.rows.asTriples())
+    assertEquals(listOf("Kotlin"), result.added)
+  }
+
+  @Test
+  fun anExistingSubjectMatchesCaseInsensitivelyAndKeepsTheFieldsNotPassed() {
+    // Fixture Setup
+    val rows = listOf(entry("Kotlin", Familiarity.RUSTY, Interest.KEEN))
+
+    // Exercise SUT — only the level changes
+    val result = apply(rows, change("  kotlin ", level = Familiarity.COMFORTABLE))
+
+    // Verification — one row, original spelling, interest untouched; the input wasn't modified
+    assertEquals(listOf(Triple("Kotlin", Familiarity.COMFORTABLE, Interest.KEEN)), result.rows.asTriples())
+    assertEquals(listOf("Kotlin"), result.updated)
+    assertEquals(Familiarity.RUSTY, rows.single().level)
+  }
+
+  @Test
+  fun aNewSubjectWithoutALevelIsRejectedRatherThanGuessed() {
+    val result = apply(emptyList(), change("Gradle", interest = Interest.KEEN))
+    assertEquals(emptyList<FamiliarityEntry>(), result.rows)
+    assertEquals(listOf("Gradle"), result.rejected)
+  }
+
+  @Test
+  fun aNewUninterestedSubjectNeedsNoLevel() {
+    // "Don't ask me about Gradle": the level doesn't matter when the agent just handles it.
+    val result = apply(emptyList(), change("Gradle", interest = Interest.UNINTERESTED))
+    assertEquals(listOf("Gradle"), result.rows.map { it.subject })
+    assertEquals(Interest.UNINTERESTED, result.rows.single().interest)
+  }
+
+  @Test
+  fun removalsDropMatchingRowsAndIgnoreUnknownOnes() {
+    val rows = listOf(entry("Kotlin", Familiarity.RUSTY), entry("SQL", Familiarity.FLUENT))
+    val result = apply(rows, remove = listOf("sql", "Haskell"))
+    assertEquals(listOf("Kotlin"), result.rows.map { it.subject })
+    assertEquals(listOf("SQL"), result.removed)
+  }
+
+  @Test
+  fun eachFamiliarityRowInTheBriefSaysWhichScopeItLivesIn() {
+    // Fixture Setup
+    val global = entry("Kotlin", Familiarity.RUSTY).also { it.scope = FamiliarityScope.GLOBAL }
+    val local = entry("Parser", Familiarity.NEW).also { it.scope = FamiliarityScope.PROJECT }
+
+    // Exercise SUT
+    val brief = AvecMoiGuidance.composeBrief("", listOf(global, local), ReviewLevel.NORMAL, "")
+
+    // Verification — so the agent knows which scope to pass to set_familiarity
+    assertTrue(brief, brief.contains("Kotlin: rusty (neutral) [all projects]"))
+    assertTrue(brief, brief.contains("Parser: new (neutral) [this project]"))
+  }
 }

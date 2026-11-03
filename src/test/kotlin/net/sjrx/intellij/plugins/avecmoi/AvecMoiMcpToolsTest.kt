@@ -526,4 +526,99 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     // Verification
     assertEquals(listOf(Phrase("keep")), ring.all().single().phrases)
   }
+
+  // --- set_familiarity ------------------------------------------------------------------------
+
+  private fun setFamiliarity(arguments: String) = callTool("set_familiarity", arguments)
+
+  fun testSetFamiliarityWritesEachRowToTheStoreForItsScope() {
+    // Exercise SUT
+    // language=JSON
+    val result = setFamiliarity("""
+      { "projectPath": "$projectPath", "entries": [
+        { "subject": "Kotlin", "level": "rusty", "interest": "keen", "scope": "global" },
+        { "subject": "Inlay rendering", "level": "new", "scope": "project" }
+      ] }
+    """.trimIndent())
+
+    // Verification — global rows go IDE-wide, project rows stay here
+    assertFalse(result.contentText(), result.isError())
+    assertEquals(listOf("Kotlin"), globalSettings.familiarity.map { it.subject })
+    assertEquals(Familiarity.RUSTY, globalSettings.familiarity.single().level)
+    assertEquals(Interest.KEEN, globalSettings.familiarity.single().interest)
+    assertEquals(listOf("Inlay rendering"), settings.familiarity.map { it.subject })
+  }
+
+  fun testWhatSetFamiliarityWritesShowsUpInTheGuidance() {
+    // Fixture Setup
+    // language=JSON
+    setFamiliarity("""{ "projectPath": "$projectPath", "entries": [ { "subject": "Kotlin", "level": "rusty", "scope": "global" } ] }""")
+
+    // Exercise SUT
+    val brief = callTool("get_avecmoi_guidance", """{ "projectPath": "$projectPath" }""").contentText()
+
+    // Verification
+    assertTrue(brief, brief.contains("Kotlin: rusty (neutral) [all projects]"))
+  }
+
+  fun testSetFamiliarityUpdatesAnExistingRowInPlace() {
+    // Fixture Setup
+    settings.familiarity = mutableListOf(
+      FamiliarityEntry().also { it.subject = "Parser"; it.level = Familiarity.NEW; it.interest = Interest.KEEN },
+    )
+
+    // Exercise SUT — correct the level only
+    // language=JSON
+    setFamiliarity("""{ "projectPath": "$projectPath", "entries": [ { "subject": "parser", "level": "comfortable", "scope": "project" } ] }""")
+
+    // Verification
+    val row = settings.familiarity.single()
+    assertEquals("Parser", row.subject)
+    assertEquals(Familiarity.COMFORTABLE, row.level)
+    assertEquals(Interest.KEEN, row.interest)
+  }
+
+  fun testSetFamiliarityRemovesRows() {
+    // Fixture Setup
+    globalSettings.familiarity = mutableListOf(FamiliarityEntry().also { it.subject = "SQL"; it.level = Familiarity.FLUENT })
+
+    // Exercise SUT
+    // language=JSON
+    val result = setFamiliarity("""{ "projectPath": "$projectPath", "remove": [ { "subject": "SQL", "scope": "global" } ] }""")
+
+    // Verification
+    assertFalse(result.contentText(), result.isError())
+    assertEquals(emptyList<FamiliarityEntry>(), globalSettings.familiarity)
+  }
+
+  fun testANewSubjectWithoutALevelIsReportedAndNotWritten() {
+    // Exercise SUT
+    // language=JSON
+    val result = setFamiliarity("""{ "projectPath": "$projectPath", "entries": [ { "subject": "Gradle", "scope": "project" } ] }""")
+
+    // Verification
+    assertTrue(result.isError())
+    assertTrue(result.contentText(), result.contentText().contains("Gradle"))
+    assertEquals(emptyList<FamiliarityEntry>(), settings.familiarity)
+  }
+
+  fun testAnEntryWithABadScopeIsReportedWhileTheGoodOnesAreStillWritten() {
+    // Exercise SUT
+    // language=JSON
+    val result = setFamiliarity("""
+      { "projectPath": "$projectPath", "entries": [
+        { "subject": "Kotlin", "level": "rusty", "scope": "everywhere" },
+        { "subject": "Parser", "level": "new", "scope": "project" }
+      ] }
+    """.trimIndent())
+
+    // Verification
+    assertTrue(result.isError())
+    assertEquals(emptyList<FamiliarityEntry>(), globalSettings.familiarity)
+    assertEquals(listOf("Parser"), settings.familiarity.map { it.subject })
+  }
+
+  fun testSetFamiliarityWithNothingToDoIsAToolError() {
+    assertTrue(setFamiliarity("""{ "projectPath": "$projectPath" }""").isError())
+  }
 }

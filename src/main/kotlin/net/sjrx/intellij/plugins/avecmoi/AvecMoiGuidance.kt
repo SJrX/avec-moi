@@ -23,6 +23,70 @@ object AvecMoiGuidance {
     return byKey.values.toList()
   }
 
+  /** One agent-requested change to a familiarity row; null fields leave an existing row's value alone. */
+  data class FamiliarityChange(val subject: String, val level: Familiarity?, val interest: Interest?)
+
+  /** The rows after [applyFamiliarity], plus what happened, for the tool's reply. */
+  data class FamiliarityUpdate(
+    val rows: List<FamiliarityEntry>,
+    val added: List<String>,
+    val updated: List<String>,
+    val removed: List<String>,
+    val rejected: List<String>,
+  )
+
+  /**
+   * Apply agent-requested [changes] and [removals] to one store's [rows] (a single scope), matching
+   * subjects trimmed and case-insensitively. An existing row gets only the fields that are set. A new
+   * row needs a level, except when its interest is "not interested", where the level doesn't matter
+   * (the agent just handles it) and it's stored as comfortable; a new row with neither is [rejected]
+   * rather than guessed. Pure/testable; [rows] isn't modified.
+   */
+  fun applyFamiliarity(
+    rows: List<FamiliarityEntry>,
+    changes: List<FamiliarityChange>,
+    removals: List<String>,
+    scope: FamiliarityScope,
+  ): FamiliarityUpdate {
+    fun key(subject: String) = subject.trim().lowercase()
+    val out = rows.map { it.copy() }.toMutableList()
+    val added = ArrayList<String>()
+    val updated = ArrayList<String>()
+    val removed = ArrayList<String>()
+    val rejected = ArrayList<String>()
+    for (c in changes) {
+      val subject = c.subject.trim()
+      if (subject.isEmpty()) continue
+      val existing = out.firstOrNull { key(it.subject) == key(subject) }
+      if (existing != null) {
+        c.level?.let { existing.level = it }
+        c.interest?.let { existing.interest = it }
+        updated.add(existing.subject)
+        continue
+      }
+      val level = c.level ?: if (c.interest == Interest.UNINTERESTED) Familiarity.COMFORTABLE else null
+      if (level == null) {
+        rejected.add(subject)
+        continue
+      }
+      out.add(
+        FamiliarityEntry().also {
+          it.subject = subject
+          it.level = level
+          it.interest = c.interest ?: Interest.NEUTRAL
+          it.scope = scope
+        },
+      )
+      added.add(subject)
+    }
+    for (r in removals) {
+      val hit = out.firstOrNull { key(it.subject) == key(r) } ?: continue
+      out.remove(hit)
+      removed.add(hit.subject)
+    }
+    return FamiliarityUpdate(out, added, updated, removed, rejected)
+  }
+
   fun composeBrief(
     goal: String,
     familiarity: List<FamiliarityEntry>,
@@ -41,7 +105,9 @@ object AvecMoiGuidance {
       appendLine()
       appendLine("The human's self-reported familiarity, and how much they want to implement themselves:")
       reported.forEach {
-        appendLine("  - ${it.subject.trim()}: ${it.level.label.lowercase()} (${it.interest.label.lowercase()})")
+        // The scope tells the agent which store set_familiarity should edit for this row.
+        val scope = if (it.scope == FamiliarityScope.GLOBAL) " [all projects]" else " [this project]"
+        appendLine("  - ${it.subject.trim()}: ${it.level.label.lowercase()} (${it.interest.label.lowercase()})$scope")
       }
       appendLine(
         "Two axes: FAMILIARITY is how much they know; IMPLEMENTATION INTEREST is how much they WANT to " +

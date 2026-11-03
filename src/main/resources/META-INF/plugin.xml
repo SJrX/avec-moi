@@ -28,7 +28,7 @@
         typed into the agent's terminal for you.</li>
       <li><b>Per-project guidance</b>: record your goal, your familiarity with the technologies
         involved, and how closely you want your code reviewed, so the agent scaffolds or hands off
-        accordingly.</li>
+        accordingly. The agent can fill in the familiarity table for you, after checking with you.</li>
       <li><b>Sessions</b>: separate sets of handoffs per task, which you can create, switch, rename
         and complete.</li>
       <li><b>Copy + Unwrap</b>: copy text from the terminal with its hard line wraps removed, for

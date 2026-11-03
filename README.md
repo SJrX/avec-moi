@@ -24,7 +24,8 @@ editor lets you hand control back for review.
  * **Phrasebooks** — when you're new to or rusty in a language or framework, a handoff can carry a few
    syntax-highlighted idioms and useful functions for the task: pointers, never the answer.
  * **Per-project guidance** — record how involved you want to be (goal, self-reported familiarity,
-   review depth) so the agent scaffolds vs. hands off accordingly.
+   review depth) so the agent scaffolds vs. hands off accordingly. The agent can fill in the familiarity
+   table for you: it looks at the project, asks about the gaps, and records what you confirm.
  * **Step Done** editor nudge that signals the agent to review the current handoff.
  * Session management (create / switch / rename / complete) scoped per project.
 

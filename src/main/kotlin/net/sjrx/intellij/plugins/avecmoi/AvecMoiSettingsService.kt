@@ -169,7 +169,10 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
    * Familiarity merges the app-wide GLOBAL rows with this project's rows (project overrides by subject).
    */
   fun guidance(): String {
-    val effective = AvecMoiGuidance.effectiveFamiliarity(service<AvecMoiGlobalSettings>().familiarity, state.familiarity)
+    // Tag each row with the store it came from (stored rows don't carry it), so the brief can say so.
+    val global = service<AvecMoiGlobalSettings>().familiarity.map { it.copy().also { e -> e.scope = FamiliarityScope.GLOBAL } }
+    val project = state.familiarity.map { it.copy().also { e -> e.scope = FamiliarityScope.PROJECT } }
+    val effective = AvecMoiGuidance.effectiveFamiliarity(global, project)
     return AvecMoiGuidance.composeBrief(state.goal, effective, state.reviewLevel, state.extraContext)
   }
 }
