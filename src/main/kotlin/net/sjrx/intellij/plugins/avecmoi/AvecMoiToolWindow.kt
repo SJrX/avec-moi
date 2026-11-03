@@ -420,7 +420,9 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
           if (!resolved) append("  — file not found", SimpleTextAttributes.ERROR_ATTRIBUTES)
         }
         is Note -> {
-          icon = AllIcons.General.Balloon
+          // The note row wears its handoff's kind icon (pencil / eye / bookmark), so kinds read apart.
+          val kind = ((node.parent as? DefaultMutableTreeNode)?.userObject as? AvecMoiRingService.Handoff)?.kind
+          icon = kind?.icon ?: AllIcons.General.Balloon
           append(obj.text.ifBlank { "(no note)" }, SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
         }
         PhrasebookHeader -> {
