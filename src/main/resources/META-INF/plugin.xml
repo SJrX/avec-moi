@@ -20,6 +20,9 @@
       <li><b>Handoffs</b>: the agent marks the spots for you to implement, each with a note shown
         inline in the editor. Jump between them with <i>Next/Previous Handoff</i>; they follow your
         edits.</li>
+      <li><b>Phrasebooks</b>: when you're new to or rusty in a language or framework, a handoff can
+        come with a few syntax-highlighted idioms and useful functions for the task, as pointers rather
+        than the answer.</li>
       <li><b>Step Done</b>, <b>Ask for a Hint</b> and <b>Do This Step</b>: tell the agent from the
         editor that you've finished, want a nudge, or want it to take over a step. The message is
         typed into the agent's terminal for you.</li>

@@ -1,5 +1,10 @@
 package net.sjrx.intellij.plugins.avecmoi
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+
 /**
  * The MCP tools end-to-end: an agent's `tools/call` in, the real project service mutated, the result
  * text out. This is the full path an agent actually drives (resolve the project by cwd → act on its
@@ -424,5 +429,101 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
     assertFalse(result.isError())
     assertTrue(callTool("list_sessions", """{ "projectPath": "$projectPath" }""").contentText()
       .contains("\"state\":\"historical\""))
+  }
+
+  // --- phrasebooks ----------------------------------------------------------------------------
+
+  /** The phrasebook of each work handoff as list_handoffs reports it: (code, gloss) pairs, empty if none. */
+  private fun listedPhrases(): List<List<Pair<String, String>>> {
+    val text = callTool("list_handoffs", """{ "projectPath": "$projectPath" }""").contentText()
+    return Json.parseToJsonElement(text).jsonObject.getValue("handoffs").jsonArray.map { h ->
+      h.jsonObject["phrases"]?.jsonArray?.map {
+        it.jsonObject.getValue("code").jsonPrimitive.content to it.jsonObject.getValue("gloss").jsonPrimitive.content
+      } ?: emptyList()
+    }
+  }
+
+  fun testRegisterStoresEachHandoffsPhrasebookAndListReturnsIt() {
+    // Exercise SUT
+    register(
+      // language=JSON
+      """
+        { "file": "A.kt", "note": "implement A", "phrases": [
+          { "code": "val m = marker ?: return null", "gloss": "elvis early-return" },
+          { "code": "xs.filter { it.done }" }
+        ] }
+      """.trimIndent(),
+      """{ "file": "B.kt", "note": "implement B" }""",
+    )
+
+    // Verification — the first handoff has its phrasebook (a missing gloss is empty); the second none
+    assertEquals(
+      listOf(
+        listOf("val m = marker ?: return null" to "elvis early-return", "xs.filter { it.done }" to ""),
+        emptyList(),
+      ),
+      listedPhrases(),
+    )
+  }
+
+  fun testPhrasesWithoutCodeAreDropped() {
+    // Exercise SUT
+    // language=JSON
+    register("""{ "file": "A.kt", "note": "x", "phrases": [ { "gloss": "no code" }, { "code": "  " }, { "code": "a ?: b" } ] }""")
+
+    // Verification
+    assertEquals(listOf(Phrase("a ?: b")), ring.all().single().phrases)
+  }
+
+  fun testAddHandoffTakesAPhrasebook() {
+    // Exercise SUT
+    // language=JSON
+    callTool("add_handoff", """
+      { "projectPath": "$projectPath", "file": "A.kt", "note": "x",
+        "phrases": [ { "code": "when (k) { A -> 1; B -> 2 }", "gloss": "exhaustive when" } ] }
+    """.trimIndent())
+
+    // Verification
+    assertEquals(listOf(Phrase("when (k) { A -> 1; B -> 2 }", "exhaustive when")), ring.all().single().phrases)
+  }
+
+  fun testUpdateHandoffReplacesThePhrasebookAndKeepsTheNote() {
+    // Fixture Setup
+    // language=JSON
+    register("""{ "file": "A.kt", "note": "keep me", "phrases": [ { "code": "old" } ] }""")
+
+    // Exercise SUT — phrases only
+    // language=JSON
+    val result = callTool("update_handoff", """
+      { "projectPath": "$projectPath", "handoff": 1, "phrases": [ { "code": "new", "gloss": "fresh" } ] }
+    """.trimIndent())
+
+    // Verification
+    assertFalse(result.contentText(), result.isError())
+    assertEquals(listOf(Phrase("new", "fresh")), ring.all().single().phrases)
+    assertEquals("keep me", ring.all().single().note)
+  }
+
+  fun testUpdateHandoffWithAnEmptyPhrasesArrayClearsThePhrasebook() {
+    // Fixture Setup
+    register("""{ "file": "A.kt", "note": "x", "phrases": [ { "code": "old" } ] }""")
+
+    // Exercise SUT
+    callTool("update_handoff", """{ "projectPath": "$projectPath", "handoff": 1, "phrases": [] }""")
+
+    // Verification
+    assertEquals(emptyList<Phrase>(), ring.all().single().phrases)
+  }
+
+  fun testUpdateHandoffWithoutPhrasesLeavesThePhrasebookAlone() {
+    // Fixture Setup
+    register("""{ "file": "A.kt", "note": "x", "phrases": [ { "code": "keep" } ] }""")
+
+    // Exercise SUT — a note-only edit, and a re-point (which rebuilds the handoff)
+    callTool("update_handoff", """{ "projectPath": "$projectPath", "handoff": 1, "note": "reworded" }""")
+    callTool("update_handoff", """{ "projectPath": "$projectPath", "handoff": 1, "line": 5 }""")
+
+    // Verification
+    assertEquals(listOf(Phrase("keep")), ring.all().single().phrases)
   }
 }

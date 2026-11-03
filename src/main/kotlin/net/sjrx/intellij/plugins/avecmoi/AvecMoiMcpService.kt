@@ -18,8 +18,10 @@ import com.intellij.openapi.project.ProjectManager
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -310,6 +312,7 @@ class AvecMoiMcpService : Disposable {
                   "done-able, stepped through); 'reference' = a session-long bookmark (separate list, not " +
                   "counted, not stepped through, can't be marked done).")
               }
+              put("phrases", phrasesSchema())
             }
             putJsonArray("required") { add("file"); add("note") }
           }
@@ -357,6 +360,7 @@ class AvecMoiMcpService : Disposable {
               put("description", "'todo' (default) = a spot to implement; 'read' = a step to read/" +
                 "understand code as context (also a to-do); 'reference' = a session bookmark (separate list).")
             }
+            put("phrases", phrasesSchema())
             putJsonObject("createFileIfMissing") {
               put("type", "boolean")
               put("description", "If true, create the file (and parent dirs) if it doesn't exist. Default false.")
@@ -370,8 +374,8 @@ class AvecMoiMcpService : Disposable {
         put(
           "description",
           "Edit an existing handoff in place (by its 1-based number from list_handoffs), keeping its " +
-            "position and done-state. Pass only the fields to change — note to reword, and/or file/line " +
-            "to re-point it (e.g. the stub moved). Prefer this over remove+add, which renumbers and " +
+            "position and done-state. Pass only the fields to change — note to reword, phrases to replace " +
+            "its phrasebook, and/or file/line to re-point it (e.g. the stub moved). Prefer this over remove+add, which renumbers and " +
             "drops done-state.",
         )
         putJsonObject("inputSchema") {
@@ -397,6 +401,7 @@ class AvecMoiMcpService : Disposable {
               put("type", "string"); put("description", "New file path (absolute, or relative to the project root).")
             }
             putJsonObject("line") { put("type", "integer"); put("description", "New 1-based line.") }
+            put("phrases", phrasesSchema(update = true))
             putJsonObject("createFileIfMissing") {
               put("type", "boolean")
               put("description", "If true and 'file' is given, create it (and parent dirs) if missing. Default false.")
@@ -634,6 +639,53 @@ class AvecMoiMcpService : Disposable {
     return ok
   }
 
+  /**
+   * The `phrases` property schema shared by register_handoffs / add_handoff / update_handoff: a
+   * handoff's phrasebook. On [update] an empty array clears it; omitting it leaves it unchanged.
+   */
+  private fun phrasesSchema(update: Boolean = false): JsonObject = buildJsonObject {
+    put("type", "array")
+    put(
+      "description",
+      "Optional phrasebook: 3–5 short, GENERAL idioms or useful functions/APIs from the language or " +
+        "framework this handoff needs, for when the human is new to or rusty in it. Pointers to the thing " +
+        "they don't know, NEVER the answer — no line from the actual solution. Shown alongside the note, " +
+        "syntax-highlighted." + (if (update) " Replaces the existing phrasebook; [] clears it." else ""),
+    )
+    putJsonObject("items") {
+      put("type", "object")
+      putJsonObject("properties") {
+        putJsonObject("code") {
+          put("type", "string")
+          put("description", "One line of code showing the idiom, e.g. `val m = marker ?: return null`.")
+        }
+        putJsonObject("gloss") {
+          put("type", "string")
+          put("description", "A few words on what it's for, e.g. \"elvis early-return\".")
+        }
+      }
+      putJsonArray("required") { add("code") }
+    }
+  }
+
+  /** Parse a `phrases` argument; null when absent (so update can tell "unchanged" from "clear"). */
+  private fun parsePhrases(el: JsonElement?): List<Phrase>? {
+    val arr = el as? JsonArray ?: return null
+    return arr.mapNotNull { item ->
+      val o = item as? JsonObject ?: return@mapNotNull null
+      val code = o["code"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+      Phrase(code, o["gloss"]?.jsonPrimitive?.contentOrNull ?: "")
+    }
+  }
+
+  /** Emit a handoff's phrasebook into a list_handoffs row, only when it has one. */
+  private fun JsonObjectBuilder.putPhrases(phrases: List<Phrase>) {
+    if (phrases.isEmpty()) return
+    putJsonArray("phrases") {
+      phrases.forEach { p -> addJsonObject { put("code", p.code); put("gloss", p.gloss) } }
+    }
+  }
+
   /** Shared guidance appended to the tool reply when some handoff files can't be found. */
   private fun missingFilesWarning(project: Project, missing: List<String>): String =
     "\n\nWARNING: ${missing.size} of these point to files that don't exist under the project root " +
@@ -657,7 +709,7 @@ class AvecMoiMcpService : Disposable {
       val line = o["line"]?.jsonPrimitive?.intOrNull ?: 1
       val note = o["note"]?.jsonPrimitive?.contentOrNull ?: ""
       val kind = HandoffKind.fromWire(o["kind"]?.jsonPrimitive?.contentOrNull)
-      AvecMoiRingService.HandoffSpec(file, line, note, kind)
+      AvecMoiRingService.HandoffSpec(file, line, note, kind, parsePhrases(o["phrases"]) ?: emptyList())
     }
     // Create files up front (if asked) BEFORE set(), so the markers anchor to real documents.
     val created = if (args.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
@@ -688,7 +740,8 @@ class AvecMoiMcpService : Disposable {
     val created = if (args.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, listOf(file))
     } else emptyList()
-    val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note, kind), at)
+    val phrases = parsePhrases(args["phrases"]) ?: emptyList()
+    val n = project.service<AvecMoiRingService>().add(AvecMoiRingService.HandoffSpec(file, line, note, kind, phrases), at)
     val base = (if (kind.isReference) "Added reference #$n" else "Added handoff #$n") + " in '${project.name}'." +
       (if (created.isNotEmpty()) createdFilesNote(created) else "")
     val missing = unresolvedFiles(project, listOf(file))
@@ -707,13 +760,14 @@ class AvecMoiMcpService : Disposable {
     val note = args["note"]?.jsonPrimitive?.contentOrNull
     val file = args["file"]?.jsonPrimitive?.contentOrNull
     val line = args["line"]?.jsonPrimitive?.intOrNull
-    if (note == null && file == null && line == null) {
-      return textContent("Nothing to update — pass at least one of note, file, line.", isError = true)
+    val phrases = parsePhrases(args["phrases"])
+    if (note == null && file == null && line == null && phrases == null) {
+      return textContent("Nothing to update — pass at least one of note, phrases, file, line.", isError = true)
     }
     val created = if (file != null && args["createFileIfMissing"]?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, listOf(file))
     } else emptyList()
-    return if (project.service<AvecMoiRingService>().update(n - 1, note, file, line, reference)) {
+    return if (project.service<AvecMoiRingService>().update(n - 1, note, file, line, reference, phrases)) {
       val base = "Updated $label #$n in '${project.name}'." +
         (if (created.isNotEmpty()) createdFilesNote(created) else "")
       val missing = if (file != null) unresolvedFiles(project, listOf(file)) else emptyList()
@@ -788,6 +842,7 @@ class AvecMoiMcpService : Disposable {
               put("file", h.file)
               put("line", h.line)
               put("note", h.note)
+              putPhrases(h.phrases)
               put("fileExists", AvecMoiNavigation.resolveFile(project, h.file) != null)
             }
           }
@@ -800,6 +855,7 @@ class AvecMoiMcpService : Disposable {
               put("file", h.file)
               put("line", h.line)
               put("note", h.note)
+              putPhrases(h.phrases)
               put("fileExists", AvecMoiNavigation.resolveFile(project, h.file) != null)
             }
           }
@@ -1159,6 +1215,16 @@ class AvecMoiMcpService : Disposable {
         Fenced and indented lines render VERBATIM — leading indentation and interior spacing preserved,
         not reflowed — while ordinary prose is soft-wrapped. Without a fence or indent, a snippet like a
         function body will have its indentation flattened, so always fence code so it stays readable.
+      - PHRASEBOOKS: when the human is new to or rusty in the language or framework a handoff uses (from
+        their familiarity in get_avecmoi_guidance, or from what they've told you), give that handoff a
+        `phrases` list — 3–5 one-line idioms or useful functions/APIs, each with a short gloss, e.g.
+        {code: "val m = marker ?: return null", gloss: "elvis early-return"}. The IDE shows them with the
+        note, syntax-highlighted. They exist to get the human past "how do you say this in <language>?",
+        so pick what THIS task actually needs, not a general primer. Phrases are pointers to the thing
+        they don't know — NEVER the answer: no line, expression or call sequence lifted from the
+        solution, and nothing that gives away the algorithm. If a phrase would only make sense in the
+        solution, it's too specific — generalize it (different names, a different example) or drop it.
+        Skip phrasebooks where they're comfortable or fluent, and drop them if they say they don't want them.
       - Optionally call `navigate_to` to place the human at the first handoff to get them started.
       - The human steps through the handoffs and implements them.
 

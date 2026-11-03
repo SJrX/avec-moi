@@ -21,6 +21,8 @@ editor lets you hand control back for review.
  * In-IDE MCP server the agent connects to (configurable port; Origin/Host validated; shared-secret auth).
  * **Handoffs** — the agent marks spots for you to implement, navigable in the IDE. Anchored to
    range markers so they follow edits within a session.
+ * **Phrasebooks** — when you're new to or rusty in a language or framework, a handoff can carry a few
+   syntax-highlighted idioms and useful functions for the task: pointers, never the answer.
  * **Per-project guidance** — record how involved you want to be (goal, self-reported familiarity,
    review depth) so the agent scaffolds vs. hands off accordingly.
  * **Step Done** editor nudge that signals the agent to review the current handoff.

@@ -73,7 +73,7 @@ object AvecMoiNoteWrap {
    * fits, it's returned unchanged; otherwise trailing characters are dropped and a "…" appended.
    * Mirror [collapse]'s ellipsis loop, but drop from the END so the leading indent survives.
    */
-  private fun truncateToWidth(logical: String, budget: Int, widthOf: (String) -> Int): String {
+  internal fun truncateToWidth(logical: String, budget: Int, widthOf: (String) -> Int): String {
     if (widthOf(logical) <= budget) return logical
     var s = logical
     while (s.isNotEmpty() && widthOf("$s…") > budget) s = s.dropLast(1)

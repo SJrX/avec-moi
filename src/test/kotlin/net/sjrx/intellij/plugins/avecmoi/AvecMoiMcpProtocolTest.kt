@@ -85,6 +85,23 @@ class AvecMoiMcpProtocolTest : AbstractAvecMoiTest() {
     assertTrue("handoffs must still be required", "handoffs" in required)
   }
 
+  fun testEveryHandoffWritingToolAdvertisesAnOptionalPhrasebook() {
+    // Exercise SUT
+    val tools = call("tools/list")["tools"]!!.jsonArray
+    fun schemaOf(name: String) =
+      tools.first { it.jsonObject["name"]!!.jsonPrimitive.content == name }.jsonObject["inputSchema"]!!.jsonObject
+
+    // Verification — register_handoffs carries it per item; add/update at the top level. Never required.
+    val item = schemaOf("register_handoffs")["properties"]!!.jsonObject["handoffs"]!!.jsonObject["items"]!!.jsonObject
+    assertNotNull("register_handoffs items should advertise phrases", item["properties"]!!.jsonObject["phrases"])
+    assertFalse("phrases must be optional", "phrases" in item["required"]!!.jsonArray.map { it.jsonPrimitive.content })
+    for (name in listOf("add_handoff", "update_handoff")) {
+      val schema = schemaOf(name)
+      assertNotNull("$name should advertise phrases", schema["properties"]!!.jsonObject["phrases"])
+      assertFalse("$name: phrases must be optional", "phrases" in schema["required"]!!.jsonArray.map { it.jsonPrimitive.content })
+    }
+  }
+
   fun testPingToolReturnsPong() {
     // Exercise SUT
     // language=JSON
