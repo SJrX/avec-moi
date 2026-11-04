@@ -42,10 +42,6 @@ Handoffs / ring (from first-run design feedback)
       part is often not the obvious edit — look for the decision the change forces" example. (Skip
       the heavier per-handoff verification-command field — more mechanism than warranted.)
 - [ ] Mark-handoff-done (explicit action, or infer from the stub being replaced).
-- [ ] VFS refresh on register_handoffs: Claude writes stub files externally; the IDE's Document may
-      be stale until a VFS refresh, so a just-created RangeMarker could anchor to old content.
-      Consider refreshing the VirtualFile before creating markers. (IntelliJ refreshes on focus, so
-      usually fine in practice, but not guaranteed.)
 
 Terminal push
 - [ ] When the target terminal can't be resolved unambiguously (no selected terminal, or several

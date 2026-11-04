@@ -845,6 +845,9 @@ class AvecMoiMcpService : Disposable {
       val kind = HandoffKind.fromWire(o["kind"]?.jsonPrimitive?.contentOrNull)
       AvecMoiRingService.HandoffSpec(file, line, note, kind, parsePhrases(o["phrases"]) ?: emptyList())
     }
+    // The agent likely JUST wrote these files: sync the IDE with the disk first (#45), so they're found
+    // and anchored against their current text, not a stale cached copy.
+    AvecMoiNavigation.refreshFromDisk(project, list.map { it.file })
     // Create files up front (if asked) BEFORE set(), so the markers anchor to real documents.
     val created = if (args.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, list.map { it.file })
@@ -871,6 +874,7 @@ class AvecMoiMcpService : Disposable {
     val line = args.get("line")?.jsonPrimitive?.intOrNull ?: 1
     val kind = HandoffKind.fromWire(args.get("kind")?.jsonPrimitive?.contentOrNull)
     val at = args.get("position")?.jsonPrimitive?.intOrNull?.let { it - 1 } // 1-based -> 0-based; null appends
+    AvecMoiNavigation.refreshFromDisk(project, listOf(file)) // #45: it may have just been written
     val created = if (args.get("createFileIfMissing")?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, listOf(file))
     } else emptyList()
@@ -898,6 +902,10 @@ class AvecMoiMcpService : Disposable {
     if (note == null && file == null && line == null && phrases == null) {
       return textContent("Nothing to update — pass at least one of note, phrases, file, line.", isError = true)
     }
+    // #45: re-anchoring reads the file, which may have just been written — the new one, or the handoff's own.
+    val target = file ?: project.service<AvecMoiRingService>().let { r -> (if (reference) r.references() else r.all()) }
+      .getOrNull(n - 1)?.file
+    if (target != null && (file != null || line != null)) AvecMoiNavigation.refreshFromDisk(project, listOf(target))
     val created = if (file != null && args["createFileIfMissing"]?.jsonPrimitive?.booleanOrNull == true) {
       createMissingFiles(project, listOf(file))
     } else emptyList()
@@ -919,6 +927,7 @@ class AvecMoiMcpService : Disposable {
     val file = args?.get("file")?.jsonPrimitive?.contentOrNull
       ?: return textContent("Missing 'file'.", isError = true)
     val line = args.get("line")?.jsonPrimitive?.intOrNull ?: 1
+    AvecMoiNavigation.refreshFromDisk(project, listOf(file)) // #45: it may have just been written
     return if (AvecMoiNavigation.openAt(project, file, line)) {
       textContent("Navigating '${project.name}' to $file:$line", isError = false)
     } else {
@@ -963,6 +972,8 @@ class AvecMoiMcpService : Disposable {
     val project = resolveProject(path)
       ?: return textContent("No open project matches path: $path", isError = true)
     val ring = project.service<AvecMoiRingService>()
+    // #45: so fileExists reflects the disk, not a stale cache. (Outside the read action below.)
+    AvecMoiNavigation.refreshFromDisk(project, (ring.all() + ring.references()).map { it.file })
     // reading .line touches the marker's document, so compute under a read lock (we're off the EDT).
     return jsonContent(runReadActionBlocking {
       buildJsonObject {
