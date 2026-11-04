@@ -347,7 +347,8 @@ class AvecMoiMcpService : Disposable {
           "them. Call after writing compiling stubs. Replaces any previously registered handoffs AND " +
           "references. Each item has a kind: 'todo' (implement here), 'read' (a step to read/understand " +
           "specific code as context, e.g. an implementation to mirror — also a work item), or " +
-          "'reference' (a session-long bookmark to handy code; a separate list, not a work item).",
+          "'reference' (an OPTIONAL, unordered bookmark to handy side context; a separate list, not a " +
+          "work item). A walkthrough or review of a change is ordered 'read' steps, not references.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
         "handoffs" to buildJsonObject {
           put("type", "array")
@@ -377,8 +378,9 @@ class AvecMoiMcpService : Disposable {
                 putJsonArray("enum") { add("todo"); add("read"); add("reference") }
                 put("description", "'todo' (default) = a spot to implement; 'read' = a step to " +
                   "read/understand specific code as context (e.g. an implementation to mirror — a to-do, " +
-                  "done-able, stepped through); 'reference' = a session-long bookmark (separate list, not " +
-                  "counted, not stepped through, can't be marked done).")
+                  "done-able, stepped through); 'reference' = an optional, UNORDERED bookmark to side " +
+                  "context, handy whenever (separate list, not counted, not a step, can't be marked done) — " +
+                  "never the main content; a walkthrough is ordered 'read' steps.")
               }
               put("phrases", phrasesSchema())
             }
@@ -426,7 +428,8 @@ class AvecMoiMcpService : Disposable {
               put("type", "string")
               putJsonArray("enum") { add("todo"); add("read"); add("reference") }
               put("description", "'todo' (default) = a spot to implement; 'read' = a step to read/" +
-                "understand code as context (also a to-do); 'reference' = a session bookmark (separate list).")
+                "understand code as context (also a to-do, stepped through in order); 'reference' = an " +
+                "optional, unordered bookmark to side context (separate list, not a step).")
             }
             put("phrases", phrasesSchema())
             putJsonObject("createFileIfMissing") {
@@ -1308,11 +1311,17 @@ class AvecMoiMcpService : Disposable {
             it supports — if the scaffolding is the very stub they're filling in, they already see it
             inline and a read there is just noise. These are still work items (a to-do; counted, stepped through,
             marked done); its output is understanding, not code.
-          - 'reference': an unordered, session-long bookmark to code that's handy to jump to whenever
-            (not tied to one task). NOT work — its OWN list and index namespace (list_handoffs'
-            references[]), not counted, not stepped through, can't be marked done. To edit/remove one,
-            pass reference:true with its reference number. Point them at genuinely-helpful spots, not
-            everything.
+          - 'reference': an OPTIONAL, UNORDERED bookmark to code that's handy to jump to whenever — side
+            context the human may or may not look at (not tied to one task, no order implied). NOT work —
+            its OWN list and index namespace (list_handoffs' references[]), not counted, not stepped
+            through, can't be marked done. To edit/remove one, pass reference:true with its reference
+            number. Point them at genuinely-helpful spots, not everything. References are never the main
+            content of a session: if the order matters or the human is meant to go through it, it's a
+            'read' (or a 'todo'), not a reference.
+      - Walkthroughs: when the human asks you to explain, walk them through, or give a rundown of code or
+        a change (e.g. "run me through this MR"), register ordered 'read' steps in the order to read them
+        — entry point first, then what it calls, then the details — each note saying what to look at and
+        why. Add references only for optional side context (a related config, a test worth a glance).
       - Closing out reads: a 'read' step is usually a prerequisite for a later to-do. When the human
         finishes that to-do and you verify it (so they've clearly absorbed the context), mark the
         preceding 'read' step(s) done too — don't leave a satisfied prerequisite sitting as open work.
