@@ -13,6 +13,7 @@ class AvecMoiStartup : ProjectActivity {
   override suspend fun execute(project: Project) {
     service<AvecMoiMcpService>().startIfNeeded()
     project.service<AvecMoiRingService>().materializeMarkers()
+    project.service<AvecMoiRingService>().startTracking()
     project.service<AvecMoiInlayService>().start()
   }
 }
