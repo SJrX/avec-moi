@@ -2,13 +2,18 @@ package net.sjrx.intellij.plugins.avecmoi
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.runReadActionBlocking
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.StoragePathMacros
+import com.intellij.openapi.editor.Document
+import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.RangeMarker
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.util.messages.Topic
@@ -83,21 +88,36 @@ class AvecMoiRingService(private val project: Project) :
     val file: String,
     var note: String,
     var marker: RangeMarker?,
-    private val fallbackLine: Int,
+    fallbackLine: Int,
     val kind: HandoffKind = HandoffKind.TODO,
     var phrases: List<Phrase> = emptyList(),
   ) {
     var done: Boolean = false
 
     /**
-     * Current 1-based line, tracking edits via the marker when it's still valid. Reads the marker's
-     * document, which needs a read action, so the getter self-guards — [runReadActionBlocking] is
-     * reentrant, so callers already inside a read action pay nothing extra.
+     * The line last seen while anchored — kept current before every edit to the marker's document (see
+     * [startTracking]) and whenever [line] is read — so a lost anchor reports where the handoff WAS,
+     * not where it was first registered.
+     */
+    @Volatile
+    internal var lastLine: Int = fallbackLine
+
+    /**
+     * Set when an edit to this document deleted the marker's whole range: the handoff floats at
+     * [lastLine] until the next edit there (typically the undo) re-anchors it.
+     */
+    @Volatile
+    internal var floatingIn: Document? = null
+
+    /**
+     * Current 1-based line, tracking edits via the marker when it's still valid, else the last line it
+     * was seen on. Reads the marker's document, which needs a read action, so the getter self-guards —
+     * [runReadActionBlocking] is reentrant, so callers already inside a read action pay nothing extra.
      */
     val line: Int
       get() = runReadActionBlocking {
         val m = marker
-        if (m != null && m.isValid) m.document.getLineNumber(m.startOffset) + 1 else fallbackLine
+        if (m != null && m.isValid) (m.document.getLineNumber(m.startOffset) + 1).also { lastLine = it } else lastLine
       }
   }
 
@@ -375,6 +395,67 @@ class AvecMoiRingService(private val project: Project) :
     return combined[next]
   }
 
+  // --- re-anchoring ---------------------------------------------------------------------------
+
+  @Volatile
+  private var tracking = false
+
+  /**
+   * Watch document edits so a handoff survives its text being deleted and restored (select all,
+   * delete, undo). A marker whose whole range is deleted is invalidated for good — undo doesn't bring
+   * it back — so: before each edit, note every anchored handoff's line; when an edit invalidates a
+   * marker, the handoff floats at that line; on the next edit to the same document it's re-anchored
+   * there (or on the last line, if the file is now shorter). Either transition redraws the notes,
+   * whose inlays the deletion disposed. Idempotent; called at project startup.
+   */
+  fun startTracking() {
+    if (tracking) return
+    tracking = true
+    EditorFactory.getInstance().eventMulticaster.addDocumentListener(
+      object : DocumentListener {
+        override fun beforeDocumentChange(event: DocumentEvent) {
+          for (h in allHandoffs()) {
+            val m = h.marker ?: continue
+            if (m.isValid && m.document === event.document) h.lastLine = m.document.getLineNumber(m.startOffset) + 1
+          }
+        }
+
+        override fun documentChanged(event: DocumentEvent) {
+          if (reanchor(event.document)) {
+            // Not from inside the write action: listeners rebuild inlays and the tree.
+            ApplicationManager.getApplication().invokeLater({ changed() }, project.disposed)
+          }
+        }
+      },
+      this,
+    )
+  }
+
+  /** Every handoff in every session — markers exist for all of them, not just the active one. */
+  private fun allHandoffs(): List<Handoff> = synchronized(this) { sessions.flatMap { it.handoffs + it.references } }
+
+  /** Float the handoffs this edit just un-anchored; re-anchor ones already floating. True if any changed. */
+  private fun reanchor(doc: Document): Boolean {
+    var changed = false
+    for (h in allHandoffs()) {
+      val m = h.marker
+      if (m != null && !m.isValid && m.document === doc) {
+        // Lost in THIS edit: float now, re-anchor on the next one — re-anchoring here would pin it to
+        // whatever line moved up into its place, and an undo would then push it off its own line.
+        m.dispose()
+        h.marker = null
+        h.floatingIn = doc
+        changed = true
+      } else if (m == null && h.floatingIn === doc && doc.lineCount > 0) {
+        val line0 = (h.lastLine - 1).coerceIn(0, doc.lineCount - 1)
+        h.marker = doc.createRangeMarker(doc.getLineStartOffset(line0), doc.getLineEndOffset(line0))
+        h.floatingIn = null
+        changed = true
+      }
+    }
+    return changed
+  }
+
   // --- helpers ----------------------------------------------------------------------------------
 
   private fun buildHandoffs(specs: List<HandoffSpec>): List<Handoff> =
@@ -482,6 +563,7 @@ class AvecMoiRingService(private val project: Project) :
       for (s in sessions) for (h in s.handoffs + s.references) {
         if (h.marker?.isValid != true) {
           h.marker = runReadActionBlocking { createMarker(h.file, h.line) }
+          h.floatingIn = null
         }
       }
     }

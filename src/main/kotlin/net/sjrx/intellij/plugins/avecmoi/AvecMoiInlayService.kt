@@ -53,7 +53,12 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
   private val phrasebookCollapsed: MutableSet<AvecMoiRingService.Handoff> =
     Collections.newSetFromMap(IdentityHashMap())
 
+  private var started = false
+
+  /** Subscribe to ring changes and editor creation. Idempotent. */
   fun start() {
+    if (started) return
+    started = true
     project.messageBus.connect(this).subscribe(AvecMoiRingService.TOPIC, AvecMoiRingListener { refreshAll() })
     EditorFactory.getInstance().addEditorFactoryListener(
       object : EditorFactoryListener {
