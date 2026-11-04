@@ -339,6 +339,10 @@ class AvecMoiRingService(private val project: Project) :
 
   @Synchronized fun isEmpty(): Boolean = activeLocked()?.handoffs?.isEmpty() ?: true
 
+  /** Whether there's anything to navigate to: work handoffs OR references (see [next]/[prev]). */
+  @Synchronized fun hasAnything(): Boolean =
+    activeLocked()?.let { it.handoffs.isNotEmpty() || it.references.isNotEmpty() } ?: false
+
   @Synchronized fun size(): Int = activeLocked()?.handoffs?.size ?: 0
 
   /** The work handoffs (to-dos + reviews) of the active session. */

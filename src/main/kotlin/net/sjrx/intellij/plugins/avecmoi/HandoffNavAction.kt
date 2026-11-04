@@ -23,7 +23,8 @@ abstract class HandoffNavAction(private val forward: Boolean) : AnAction() {
 
   override fun update(e: AnActionEvent) {
     val project = e.project
-    e.presentation.isEnabled = project != null && !project.service<AvecMoiRingService>().isEmpty()
+    // References count: a session of only references is still navigable (#43).
+    e.presentation.isEnabled = project != null && project.service<AvecMoiRingService>().hasAnything()
   }
 
   override fun actionPerformed(e: AnActionEvent) {
