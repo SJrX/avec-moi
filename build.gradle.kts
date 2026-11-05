@@ -63,6 +63,7 @@ plugins {
   id("org.jetbrains.intellij.platform") version "2.19.0"
   id("org.jetbrains.kotlin.jvm") version "2.4.21"
   id("idea")
+  id("jacoco")
 }
 
 group = "net.sjrx.intellij.plugins"
@@ -178,6 +179,29 @@ idea {
   module {
     setDownloadJavadoc(true)
     setDownloadSources(true)
+  }
+}
+
+tasks {
+  test {
+    testLogging.showExceptions = true
+    testLogging.setExceptionFormat("full")
+    // Coverage for CI trends (as in the systemd plugin). The IntelliJ test framework loads classes through
+    // its own class loaders, which JaCoCo only records with includeNoLocationClasses; jdk.internal is
+    // excluded because instrumenting it breaks the JVM.
+    configure<JacocoTaskExtension> {
+      isIncludeNoLocationClasses = true
+      excludes = listOf("jdk.internal.*")
+    }
+  }
+
+  jacocoTestReport {
+    // Only reports on existing execution data (run `test` first); CI publishes the XML with the Coverage plugin.
+    reports {
+      xml.required = true
+      html.required = true
+      csv.required = false
+    }
   }
 }
 
