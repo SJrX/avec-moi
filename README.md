@@ -33,8 +33,43 @@ editor lets you hand control back for review.
 
 ## Installation
 
-Not yet published to the JetBrains Marketplace. Build and install from disk (see
-[Manual Installation](#manual-installation)).
+Requires an IntelliJ-based IDE, 2026.1 (build 261) or newer, using the new (reworked) terminal.
+The quick actions type into the agent's terminal session, and the classic terminal isn't supported.
+
+### From the JetBrains Marketplace (stable)
+
+In the IDE, go to **Settings → Plugins → Marketplace**, search for **Avec Moi**, and install it. Or
+use **Install to IDE** on the [plugin's Marketplace page](https://plugins.jetbrains.com/plugin/34784-avec-moi).
+
+### From the dev channel (latest builds)
+
+Every change merged to the release branch is published to the Marketplace's `dev` channel right
+away. Stable releases follow after a release gate of up to 8 hours. To get the dev builds:
+
+1. Go to **Settings → Plugins → ⚙ → Manage Plugin Repositories…**
+2. Add `https://plugins.jetbrains.com/plugins/dev/34784`
+3. Install or update **Avec Moi** from the **Marketplace** tab. Dev versions end in `-dev`.
+
+To go back to stable builds only, remove the repository, then uninstall the plugin and reinstall it
+from the Marketplace.
+
+### From source
+
+Build the plugin and install it from disk. See [Manual Installation](#manual-installation).
+
+### Connecting your agent
+
+Avec Moi runs an MCP server inside the IDE for your agent to connect to. In **Settings → Tools →
+Avec Moi → MCP Server**, copy the **Agent connect command** and run it in a shell. For Claude Code
+it looks like:
+
+```bash
+claude mcp add --scope user --transport http avec-moi http://localhost:<port>/mcp --header "Authorization: Bearer <token>"
+```
+
+The command includes a secret token. **Regenerate auth token** on the same page replaces it; re-run
+the new command everywhere you added the old one. Other agents that support MCP over HTTP with an
+`Authorization` header can connect with their own equivalent of this command.
 
 ## Development Notes
 
