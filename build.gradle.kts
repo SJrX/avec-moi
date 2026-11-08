@@ -125,20 +125,28 @@ dependencies {
 // The plugin is still compiled against 2026.1 (sinceBuild 261); this only affects what `runIde262`
 // launches. Useful because the reworked-terminal API we depend on is @ApiStatus.Experimental and
 // can drift between releases. Run with: ./gradlew runIde262
+// runGoLand262 does the same in GoLand 2026.2, to check the plugin outside IntelliJ IDEA (it only
+// depends on the platform and the bundled terminal, which GoLand has too): ./gradlew runGoLand262
 intellijPlatformTesting {
   runIde {
     register("runIde262") {
       type.set(IntelliJPlatformType.IntellijIdea)
       version.set("2026.2")
     }
+    register("runGoLand262") {
+      type.set(IntelliJPlatformType.GoLand)
+      version.set("2026.2")
+    }
   }
 }
 
-// Force the IDE-side plugin auto-reload property on the custom runIde262 task (belt-and-suspenders
+// Force the IDE-side plugin auto-reload property on the custom run tasks (belt-and-suspenders
 // vs the autoReload default not reaching a custom intellijPlatformTesting task), so a rebuild +
 // refocus hot-reloads the plugin the same way stock `runIde` does.
-tasks.named<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>("runIde262") {
-  jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Didea.auto.reload.plugins=true") })
+listOf("runIde262", "runGoLand262").forEach { name ->
+  tasks.named<org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask>(name) {
+    jvmArgumentProviders.add(CommandLineArgumentProvider { listOf("-Didea.auto.reload.plugins=true") })
+  }
 }
 
 // Bake version + build timestamp into a resource so the `ping` MCP tool can report them (lets an
