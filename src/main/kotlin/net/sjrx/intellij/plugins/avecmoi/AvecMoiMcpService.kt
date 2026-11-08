@@ -1447,6 +1447,10 @@ class AvecMoiMcpService : Disposable {
         Fenced and indented lines render VERBATIM — leading indentation and interior spacing preserved,
         not reflowed — while ordinary prose is soft-wrapped. Without a fence or indent, a snippet like a
         function body will have its indentation flattened, so always fence code so it stays readable.
+      - Notes render a small Markdown subset: `inline code`, **bold**, *italic*, `-` / `1.` lists
+        (nested by indenting the marker), and `#` headings (drawn as a bold line). Nothing else — no
+        links, tables or images; they'd show as raw syntax. Use inline code for identifiers you mention,
+        and bold sparingly for the one thing they mustn't miss.
       - PHRASEBOOKS: when the human is new to or rusty in the language or framework a handoff uses (from
         their familiarity in get_avecmoi_guidance, or from what they've told you), give that handoff a
         `phrases` list — 3–5 one-line idioms or useful functions/APIs, each with a short gloss, e.g.

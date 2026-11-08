@@ -90,6 +90,7 @@ class AvecMoiPersistenceSerializationTest : AbstractAvecMoiTest() {
       terminalOnSend = TerminalRevealBehavior.SHOW_AND_FOCUS
       editorNoteScope = EditorNoteScope.CURRENT
       noteWrapMaxColumns = 110
+      noteTextStyle = NoteTextStyle.ITALIC
       familiarity = mutableListOf(
         familiarity("Kotlin", Familiarity.FLUENT, Interest.KEEN, FamiliarityScope.GLOBAL),
         familiarity("Regex", Familiarity.NEW, Interest.UNINTERESTED, FamiliarityScope.PROJECT),
@@ -106,6 +107,7 @@ class AvecMoiPersistenceSerializationTest : AbstractAvecMoiTest() {
     assertEquals(TerminalRevealBehavior.SHOW_AND_FOCUS, restored.terminalOnSend)
     assertEquals(EditorNoteScope.CURRENT, restored.editorNoteScope)
     assertEquals(110, restored.noteWrapMaxColumns)
+    assertEquals(NoteTextStyle.ITALIC, restored.noteTextStyle)
     // Verification — familiarity rows, incl. the newer interest + scope fields
     assertEquals(2, restored.familiarity.size)
     restored.familiarity[0].let {

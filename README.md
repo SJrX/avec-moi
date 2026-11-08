@@ -20,7 +20,8 @@ editor lets you hand control back for review.
 
  * In-IDE MCP server the agent connects to (configurable port; Origin/Host validated; shared-secret auth).
  * **Handoffs** — the agent marks spots for you to implement, navigable in the IDE. Anchored to
-   range markers so they follow edits within a session.
+   range markers so they follow edits within a session. Notes render a small Markdown subset
+   (inline code, bold, italic, lists) and keep fenced or indented code verbatim.
  * **Phrasebooks** — when you're new to or rusty in a language or framework, a handoff can carry a few
    syntax-highlighted idioms and useful functions for the task: pointers, never the answer.
  * **Per-project guidance** — record how involved you want to be (goal, self-reported familiarity,

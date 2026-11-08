@@ -1,5 +1,6 @@
 package net.sjrx.intellij.plugins.avecmoi
 
+import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
@@ -20,6 +21,31 @@ enum class EditorNoteScope(val label: String) {
   ALL("All handoffs in the file"),
   CURRENT("Only the current handoff"),
   OFF("Off"),
+}
+
+/**
+ * How handoff note text is drawn. Markdown emphasis has to read against the base: on upright text
+ * *italic* slants, but on italic text (the inlay-hint look) it can only stand out by going upright.
+ */
+enum class NoteTextStyle(val label: String) {
+  UPRIGHT("Upright: **bold** is bold, *italic* is slanted"),
+  ITALIC("Italic, like inlay hints: **bold** is bold italic, *italic* is upright");
+
+  /** The editor font for a run of note text in [style]; code is always the plain editor font. */
+  fun fontType(style: NoteStyle): EditorFontType = when (this) {
+    UPRIGHT -> when (style) {
+      NoteStyle.TEXT, NoteStyle.CODE -> EditorFontType.PLAIN
+      NoteStyle.BOLD -> EditorFontType.BOLD
+      NoteStyle.ITALIC -> EditorFontType.ITALIC
+      NoteStyle.BOLD_ITALIC -> EditorFontType.BOLD_ITALIC
+    }
+    ITALIC -> when (style) {
+      NoteStyle.TEXT -> EditorFontType.ITALIC
+      NoteStyle.BOLD -> EditorFontType.BOLD_ITALIC
+      NoteStyle.ITALIC, NoteStyle.CODE -> EditorFontType.PLAIN
+      NoteStyle.BOLD_ITALIC -> EditorFontType.BOLD
+    }
+  }
 }
 
 /** The human's self-reported familiarity with a subject (a language, framework, area, …). */
@@ -115,6 +141,9 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
      */
     var noteWrapMaxColumns: Int = 0
 
+    /** Whether note text is drawn upright or italic (which decides how Markdown emphasis shows). */
+    var noteTextStyle: NoteTextStyle = NoteTextStyle.UPRIGHT
+
     /** What the human is working toward on this project (freeform). */
     var goal: String = ""
 
@@ -147,6 +176,10 @@ class AvecMoiSettingsService : PersistentStateComponent<AvecMoiSettingsService.S
   var noteWrapMaxColumns: Int
     get() = state.noteWrapMaxColumns
     set(value) { state.noteWrapMaxColumns = value }
+
+  var noteTextStyle: NoteTextStyle
+    get() = state.noteTextStyle
+    set(value) { state.noteTextStyle = value }
 
   var goal: String
     get() = state.goal

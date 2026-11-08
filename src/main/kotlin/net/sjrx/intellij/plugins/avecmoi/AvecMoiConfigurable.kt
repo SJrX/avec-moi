@@ -69,6 +69,10 @@ class AvecMoiConfigurable(private val project: Project) : BoundConfigurable("Ave
         EditorNoteScope.entries.forEach { scope -> row { radioButton(scope.label, scope) } }
       }.bind(settings::editorNoteScope)
 
+      buttonsGroup("Draw note text:") {
+        NoteTextStyle.entries.forEach { style -> row { radioButton(style.label, style) } }
+      }.bind(settings::noteTextStyle)
+
       row("Max note width (columns):") {
         intTextField(0..500).bindIntText(settings::noteWrapMaxColumns)
       }.rowComment("Soft-wrap notes at this many columns. 0 = no cap (wrap to the editor's visible width).")
