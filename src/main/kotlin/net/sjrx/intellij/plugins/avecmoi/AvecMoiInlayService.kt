@@ -119,11 +119,12 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     if (AvecMoiNavigation.resolveFile(project, handoff.file)?.path != editorPath) return
     val offset = editor.document.getLineStartOffset((handoff.line - 1).coerceIn(0, lineCount - 1))
     val isCollapsed = handoff in collapsed
-    val maxCols = project.service<AvecMoiSettingsService>().noteWrapMaxColumns
+    val settings = project.service<AvecMoiSettingsService>()
+    val maxCols = settings.noteWrapMaxColumns
     // The renderer carries its own gutter chevron (calcGutterIconRenderer), so the fold arrow lands on
     // the note's own inlay row — not the code line below it.
     val gutter = FoldGutterIconRenderer(handoff, FoldTarget.NOTE, isCollapsed)
-    val renderer = NoteInlayRenderer(handoff, isCollapsed, maxCols, gutter)
+    val renderer = NoteInlayRenderer(handoff, isCollapsed, maxCols, settings.noteTextStyle, gutter)
     editor.inlayModel.addBlockElement(offset, false, true, NOTE_PRIORITY, renderer)?.let { inlays.add(it) }
     // The phrasebook gets its own chip right under the note, with its own fold chevron. Folding the
     // note puts the phrasebook away too.
@@ -198,14 +199,15 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
 
   /**
    * Paints the note (multi-line) above the line, styled like an inlay hint: a rounded hint-colored
-   * chip, the balloon icon on the first line, italic hint text, dimmed when done. Reads the handoff's
-   * note live so an edit only needs Inlay.update(), not a recreate. The icon avoids missing-glyph
-   * boxes for a text marker.
+   * chip, the balloon icon on the first line, then the text with its Markdown rendered, upright or
+   * italic per [NoteTextStyle], dimmed when done. Reads the handoff's note live so an edit only needs
+   * Inlay.update(), not a recreate. The icon avoids missing-glyph boxes for a text marker.
    */
   private class NoteInlayRenderer(
     val handoff: AvecMoiRingService.Handoff,
     private val collapsed: Boolean,
     private val maxColumns: Int,
+    private val textStyle: NoteTextStyle,
     private val gutter: GutterIconRenderer,
   ) : EditorCustomElementRenderer {
     private val icon = ICON
@@ -215,26 +217,27 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     private val pad = JBUI.scale(5)
     private val gap = JBUI.scale(4)
 
-    private fun font(editor: Editor) = editor.colorsScheme.getFont(EditorFontType.ITALIC)
+    /** The note's base font: the editor font, upright or italic per the setting. */
+    private fun font(editor: Editor) = fontFor(editor, NoteStyle.TEXT)
 
-    /** What actually gets drawn: one ellipsized line when collapsed, else the soft-wrapped note. */
-    private fun displayLines(inlay: Inlay<*>): List<String> =
-      if (collapsed) listOf(collapsedLine(inlay)) else wrappedLines(inlay)
+    /** The font for a run of note text; [NoteTextStyle] decides how emphasis reads against the base. */
+    private fun fontFor(editor: Editor, style: NoteStyle) = editor.colorsScheme.getFont(textStyle.fontType(style))
 
-    /** The note's first non-blank line, ellipsized to one editor-width line, with "…" if there's more. */
-    private fun collapsedLine(inlay: Inlay<*>): String {
-      val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
-      return AvecMoiNoteWrap.collapse(handoff.note, textWidthBudget(inlay.editor)) { fm.stringWidth(it) }
+    private fun measure(editor: Editor): NoteMeasure {
+      val metrics = NoteStyle.entries.associateWith { editor.contentComponent.getFontMetrics(fontFor(editor, it)) }
+      return { text, style -> metrics.getValue(style).stringWidth(text) }
     }
 
     /**
-     * The note split into display lines, soft-wrapped to the editor's visible width so the agent
-     * needn't hard-wrap. On a wide monitor this collapses to few lines; on a narrow one it wraps
-     * instead of overflowing. (Layout logic lives in AvecMoiNoteWrap so it can be unit-tested.)
+     * What actually gets drawn: one ellipsized row when collapsed, else the note soft-wrapped to the
+     * editor's visible width (so the agent needn't hard-wrap) with its Markdown rendered. Layout logic
+     * lives in AvecMoiNoteWrap so it can be unit-tested.
      */
-    private fun wrappedLines(inlay: Inlay<*>): List<String> {
-      val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
-      return AvecMoiNoteWrap.wrap(handoff.note, textWidthBudget(inlay.editor)) { fm.stringWidth(it) }
+    private fun displayLines(inlay: Inlay<*>): List<NoteLine> {
+      val budget = textWidthBudget(inlay.editor)
+      val widthOf = measure(inlay.editor)
+      return if (collapsed) listOf(AvecMoiNoteWrap.collapse(handoff.note, budget, widthOf))
+      else AvecMoiNoteWrap.layout(handoff.note, budget, widthOf)
     }
 
     /**
@@ -251,8 +254,8 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
     }
 
     override fun calcWidthInPixels(inlay: Inlay<*>): Int {
-      val fm = inlay.editor.contentComponent.getFontMetrics(font(inlay.editor))
-      val textWidth = displayLines(inlay).maxOfOrNull { fm.stringWidth(it) } ?: 0
+      val widthOf = measure(inlay.editor)
+      val textWidth = displayLines(inlay).maxOfOrNull { it.width(widthOf) } ?: 0
       return pad + icon.iconWidth + gap + textWidth + pad
     }
 
@@ -273,12 +276,26 @@ class AvecMoiInlayService(private val project: Project) : Disposable {
       }
       icon.paintIcon(editor.contentComponent, g2, targetRegion.x + pad, targetRegion.y + (lineHeight - icon.iconHeight) / 2)
 
-      g2.font = font(editor)
-      g2.color = fg
-      val ascent = g2.fontMetrics.ascent
+      val widthOf = measure(editor)
+      val ascent = editor.contentComponent.getFontMetrics(font(editor)).ascent
       val textX = targetRegion.x + pad + icon.iconWidth + gap
+      val codeBackground = editor.colorsScheme.defaultBackground
+      val inset = JBUI.scale(2)
       lines.forEachIndexed { i, line ->
-        g2.drawString(line, textX, targetRegion.y + i * lineHeight + ascent)
+        val top = targetRegion.y + i * lineHeight
+        var x = textX + line.indent
+        for (span in line.spans) {
+          val w = widthOf(span.text, span.style)
+          if (span.style == NoteStyle.CODE && span.text.isNotBlank()) {
+            // Code sits on the editor's own background, like the phrasebook chip, so it reads as code.
+            g2.color = codeBackground
+            g2.fillRoundRect(x - inset, top + inset, w + 2 * inset, lineHeight - 2 * inset, JBUI.scale(4), JBUI.scale(4))
+          }
+          g2.font = fontFor(editor, span.style)
+          g2.color = fg
+          g2.drawString(span.text, x, top + ascent)
+          x += w
+        }
       }
     }
 

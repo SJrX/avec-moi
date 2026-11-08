@@ -12,9 +12,10 @@ import org.junit.Test
  */
 class AvecMoiNoteWrapTest {
 
-  private val byChars: (String) -> Int = { it.length }
-  private fun wrap(note: String, budget: Int) = AvecMoiNoteWrap.wrap(note, budget, byChars)
-  private fun collapse(note: String, budget: Int) = AvecMoiNoteWrap.collapse(note, budget, byChars)
+  private val byChars: NoteMeasure = { text, _ -> text.length }
+  private fun wrap(note: String, budget: Int) = AvecMoiNoteWrap.layout(note, budget, byChars).map { it.text }
+  private fun collapse(note: String, budget: Int) = AvecMoiNoteWrap.collapse(note, budget, byChars).text
+  private fun layout(note: String, budget: Int = 80) = AvecMoiNoteWrap.layout(note, budget, byChars)
 
   // --- wrap ------------------------------------------------------------------------------------
 
@@ -157,5 +158,73 @@ class AvecMoiNoteWrapTest {
 
   @Test fun collapseOfAnEmptyNoteIsEmpty() {
     assertEquals("", collapse("", 80))
+  }
+
+  // --- Markdown ---------------------------------------------------------------------------------
+
+  @Test fun inlineMarkdownIsDrawnStyledAndItsSyntaxIsNotShown() {
+    // Exercise SUT
+    val line = layout("Call `parse()` **before** the *loop*").single()
+
+    // Verification
+    assertEquals(
+      listOf(
+        NoteSpan("Call "), NoteSpan("parse()", NoteStyle.CODE), NoteSpan(" "), NoteSpan("before", NoteStyle.BOLD),
+        NoteSpan(" the "), NoteSpan("loop", NoteStyle.ITALIC),
+      ),
+      line.spans,
+    )
+  }
+
+  @Test fun wrappingMeasuresTheRenderedTextNotTheMarkdown() {
+    // "aaaa **bbbb**" renders as 9 columns, so it fits a budget of 9 even though the source is 13.
+    assertEquals(listOf("aaaa bbbb"), wrap("aaaa **bbbb**", 9))
+  }
+
+  @Test fun aSpaceInsideACodeSpanStaysCodeWhenTheLineIsJoined() {
+    assertEquals(listOf(NoteSpan("a b", NoteStyle.CODE)), layout("`a b`").single().spans)
+  }
+
+  @Test fun aBulletItemGetsABulletAndItsWrappedRowsHangUnderItsText() {
+    // Exercise SUT — "• " is 2 columns, so the item's text wraps at 10 - 2 = 8
+    val rows = layout("- alpha beta gamma", 10)
+
+    // Verification
+    assertEquals(listOf("• alpha", "beta", "gamma"), rows.map { it.text })
+    assertEquals(listOf(0, 2, 2), rows.map { it.indent })
+  }
+
+  @Test fun aNumberedItemKeepsItsNumber() {
+    assertEquals(listOf("1. first", "2. second"), wrap("1. first\n2. second", 80))
+  }
+
+  @Test fun anIndentedBulletIsANestedListItemNotCode() {
+    // Exercise SUT
+    val rows = layout("- outer\n  - inner")
+
+    // Verification — nested by its indent, drawn as prose rather than verbatim code
+    assertEquals(listOf("• outer", "• inner"), rows.map { it.text })
+    assertEquals(2, rows[1].indent)
+    assertEquals(NoteStyle.TEXT, rows[1].spans.single().style)
+  }
+
+  @Test fun anIndentedCodeLineIsDrawnAsCode() {
+    assertEquals(listOf(NoteSpan("  return x", NoteStyle.CODE)), layout("  return x").single().spans)
+  }
+
+  @Test fun markdownInsideAFenceIsLeftAsWritten() {
+    assertEquals(listOf(NoteSpan("**not bold**", NoteStyle.CODE)), layout("```\n**not bold**\n```").single().spans)
+  }
+
+  @Test fun aHeadingIsABoldLineWithoutTheHashes() {
+    assertEquals(listOf(NoteSpan("Next up", NoteStyle.BOLD)), layout("## Next up").single().spans)
+  }
+
+  @Test fun collapseRendersTheMarkdownOfTheFirstLine() {
+    assertEquals("• use parse()…", collapse("- use `parse()`\n- then test", 80))
+  }
+
+  @Test fun collapseSkipsAnOpeningFence() {
+    assertEquals("x := 1", collapse("```go\nx := 1\n```", 80))
   }
 }
