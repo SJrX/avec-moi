@@ -87,6 +87,20 @@ object AvecMoiGuidance {
     return FamiliarityUpdate(out, added, updated, removed, rejected)
   }
 
+  /**
+   * [existing] extra context with [addition] added as a new paragraph, so an agent's note never
+   * rewrites what the human typed. Blank [existing] yields just the addition. Pure/testable.
+   */
+  fun appendExtraContext(existing: String, addition: String): String {
+    val add = addition.trim()
+    val base = existing.trimEnd()
+    return when {
+      add.isEmpty() -> existing
+      base.isEmpty() -> add
+      else -> "$base\n$add"
+    }
+  }
+
   fun composeBrief(
     goal: String,
     familiarity: List<FamiliarityEntry>,

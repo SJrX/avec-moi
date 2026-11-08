@@ -621,4 +621,78 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
   fun testSetFamiliarityWithNothingToDoIsAToolError() {
     assertTrue(setFamiliarity("""{ "projectPath": "$projectPath" }""").isError())
   }
+
+  // --- set_guidance ---------------------------------------------------------------------------
+
+  private fun setGuidance(arguments: String) = callTool("set_guidance", arguments)
+
+  fun testSetGuidanceSavesTheGoalAndItShowsUpInTheBrief() {
+    // Exercise SUT
+    // language=JSON
+    val result = setGuidance("""{ "projectPath": "$projectPath", "goal": "Learn coroutines" }""")
+
+    // Verification
+    assertFalse(result.contentText(), result.isError())
+    assertEquals("Learn coroutines", settings.goal)
+    val brief = callTool("get_avecmoi_guidance", """{ "projectPath": "$projectPath" }""").contentText()
+    assertTrue(brief, brief.contains("GOAL: Learn coroutines"))
+  }
+
+  fun testAppendingExtraContextKeepsWhatTheHumanWrote() {
+    // Fixture Setup
+    settings.extraContext = "Use JUnit 4."
+
+    // Exercise SUT
+    // language=JSON
+    val result = setGuidance("""{ "projectPath": "$projectPath", "appendExtraContext": "Don't touch the generated parser." }""")
+
+    // Verification — and the reply repeats back what was saved
+    assertFalse(result.contentText(), result.isError())
+    assertEquals("Use JUnit 4.\nDon't touch the generated parser.", settings.extraContext)
+    assertTrue(result.contentText(), result.contentText().contains("Don't touch the generated parser."))
+  }
+
+  fun testReplacingExtraContextOverwritesIt() {
+    // Fixture Setup
+    settings.extraContext = "Use JUnit 4."
+
+    // Exercise SUT
+    // language=JSON
+    setGuidance("""{ "projectPath": "$projectPath", "replaceExtraContext": "Use JUnit 5." }""")
+
+    // Verification
+    assertEquals("Use JUnit 5.", settings.extraContext)
+  }
+
+  fun testAnEmptyGoalClearsIt() {
+    // Fixture Setup
+    settings.goal = "Ship the parser"
+
+    // Exercise SUT
+    // language=JSON
+    setGuidance("""{ "projectPath": "$projectPath", "goal": "" }""")
+
+    // Verification
+    assertEquals("", settings.goal)
+  }
+
+  fun testAppendAndReplaceTogetherIsAToolErrorAndSavesNothing() {
+    // Fixture Setup
+    settings.extraContext = "Use JUnit 4."
+
+    // Exercise SUT
+    // language=JSON
+    val result = setGuidance("""
+      { "projectPath": "$projectPath", "goal": "Ship it", "appendExtraContext": "a", "replaceExtraContext": "b" }
+    """.trimIndent())
+
+    // Verification
+    assertTrue(result.isError())
+    assertEquals("", settings.goal)
+    assertEquals("Use JUnit 4.", settings.extraContext)
+  }
+
+  fun testSetGuidanceWithNothingToDoIsAToolError() {
+    assertTrue(setGuidance("""{ "projectPath": "$projectPath" }""").isError())
+  }
 }
