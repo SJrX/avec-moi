@@ -109,6 +109,83 @@ class AvecMoiRingServiceTest : AbstractAvecMoiTest() {
     assertFalse(ring.switchSession(a))                // a historical session can't be reactivated
   }
 
+  fun testDeactivatingTheOnlySessionLeavesItOpenWithNothingActive() {
+    // Fixture Setup
+    val a = ring.createSession("Set aside", null)
+    ring.set(listOf(spec(note = "keep me")))
+
+    // Exercise SUT
+    assertTrue(ring.deactivateSession(a))
+
+    // Verification — still open (not completed), its handoffs kept, and it can be picked back up
+    assertNull(ring.activeId())
+    val s = ring.listSessions().single()
+    assertFalse(s.historical)
+    assertEquals(listOf("keep me"), s.handoffs.map { it.note })
+    assertTrue(ring.switchSession(a))
+  }
+
+  fun testAHandoffWriteAfterDeactivatingStartsANewUntitledSession() {
+    // Fixture Setup
+    val a = ring.createSession("Set aside", null)
+    ring.deactivateSession(a)
+
+    // Exercise SUT
+    ring.set(listOf(spec(note = "new work")))
+
+    // Verification — the deactivated session is untouched; the write went to a fresh one
+    val active = ring.listSessions().single { it.id == ring.activeId() }
+    assertEquals("Untitled session", active.name)
+    assertTrue(ring.listSessions().single { it.id == a }.handoffs.isEmpty())
+  }
+
+  fun testDeactivatingAnOpenButInactiveSessionKeepsTheActiveOne() {
+    // Fixture Setup
+    val a = ring.createSession("A", null)
+    val b = ring.createSession("B", null) // b is active
+
+    // Exercise SUT
+    assertTrue(ring.deactivateSession(a))
+
+    // Verification
+    assertEquals(b, ring.activeId())
+  }
+
+  fun testAHistoricalSessionCannotBeDeactivated() {
+    // Fixture Setup
+    val a = ring.createSession("Done", null)
+    ring.completeSession(a)
+
+    // Exercise SUT / Verification
+    assertFalse(ring.deactivateSession(a))
+  }
+
+  fun testReopeningACompletedSessionMovesItBackToOpenWithoutActivatingIt() {
+    // Fixture Setup
+    val a = ring.createSession("Done too soon", null)
+    ring.set(listOf(spec(note = "unfinished")))
+    ring.completeSession(a)
+
+    // Exercise SUT
+    assertTrue(ring.reopenSession(a))
+
+    // Verification — open again with its handoffs, not active until switched to
+    val s = ring.listSessions().single()
+    assertFalse(s.historical)
+    assertEquals(listOf("unfinished"), s.handoffs.map { it.note })
+    assertNull(ring.activeId())
+    assertTrue(ring.switchSession(a))
+  }
+
+  fun testOnlyAHistoricalSessionCanBeReopened() {
+    // Fixture Setup
+    val a = ring.createSession("Open", null)
+
+    // Exercise SUT / Verification
+    assertFalse(ring.reopenSession(a))
+    assertFalse(ring.reopenSession("nope"))
+  }
+
   fun testStateSurvivesAGetStateLoadStateRoundTrip() {
     // Fixture Setup
     val a = ring.createSession("Feature A", "main")

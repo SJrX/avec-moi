@@ -599,7 +599,7 @@ class AvecMoiMcpService : Disposable {
       tool(
         "list_sessions",
         "List this project's sessions (active / open / historical) with names, branch, and progress. " +
-          "Returns JSON: {project, sessions:[{id (for switch/rename/complete_session), name, state, " +
+          "Returns JSON: {project, sessions:[{id (for the other *_session tools), name, state, " +
           "branch, handoffs, done}]}.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
       )
@@ -619,6 +619,20 @@ class AvecMoiMcpService : Disposable {
       tool(
         "complete_session",
         "Mark a session done — moves it to Historical (by its id from list_sessions).",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+        requiredString("session", "Session id (e.g. s1)."),
+      )
+      tool(
+        "deactivate_session",
+        "Put an open session away WITHOUT completing it: it stays in Open, and if it was active, no " +
+          "session is active until one is switched to (or the next handoff creates an Untitled one).",
+        requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
+        requiredString("session", "Session id (e.g. s1)."),
+      )
+      tool(
+        "reopen_session",
+        "Move a historical (completed) session back to Open. It isn't made active; call switch_session " +
+          "for that.",
         requiredString("projectPath", "Absolute path inside the target project (e.g. your cwd)."),
         requiredString("session", "Session id (e.g. s1)."),
       )
@@ -662,6 +676,8 @@ class AvecMoiMcpService : Disposable {
       "switch_session" -> switchSession(args)
       "rename_session" -> renameSession(args)
       "complete_session" -> completeSession(args)
+      "deactivate_session" -> deactivateSession(args)
+      "reopen_session" -> reopenSession(args)
       else -> textContent("Unknown tool: $name", isError = true)
     }
   }
@@ -1137,7 +1153,7 @@ class AvecMoiMcpService : Disposable {
       putJsonArray("sessions") {
         ring.listSessions().forEach { s ->
           addJsonObject {
-            put("id", s.id) // pass to switch_session / rename_session / complete_session
+            put("id", s.id) // pass to the other *_session tools
             put("name", s.name)
             put(
               "state",
@@ -1194,6 +1210,32 @@ class AvecMoiMcpService : Disposable {
       textContent("Completed session $id (moved to Historical) in '${project.name}'.", isError = false)
     } else {
       textContent("No session '$id' in '${project.name}'.", isError = true)
+    }
+  }
+
+  private fun deactivateSession(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val id = args?.get("session")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'session' id.", isError = true)
+    return if (project.service<AvecMoiRingService>().deactivateSession(id)) {
+      textContent("Deactivated session $id (still in Open) in '${project.name}'.", isError = false)
+    } else {
+      textContent("No open session '$id' in '${project.name}'.", isError = true)
+    }
+  }
+
+  private fun reopenSession(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val id = args?.get("session")?.jsonPrimitive?.contentOrNull
+      ?: return textContent("Missing 'session' id.", isError = true)
+    return if (project.service<AvecMoiRingService>().reopenSession(id)) {
+      textContent("Reopened session $id (moved back to Open) in '${project.name}'.", isError = false)
+    } else {
+      textContent("No historical session '$id' in '${project.name}'.", isError = true)
     }
   }
 
@@ -1327,6 +1369,7 @@ class AvecMoiMcpService : Disposable {
       "add_handoff", "update_handoff", "navigate_to",
       "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
       "create_session", "list_sessions", "switch_session", "rename_session", "complete_session",
+      "deactivate_session", "reopen_session",
     )
 
     /**
@@ -1428,6 +1471,8 @@ class AvecMoiMcpService : Disposable {
         think about it. For a distinct piece of work (or a second agent on this project), call
         `create_session("<name>")` to start a fresh one; `list_sessions` / `switch_session` /
         `rename_session` manage them; `complete_session` moves a finished one to Historical.
+        `deactivate_session` puts one away unfinished (it stays in Open), and `reopen_session` brings
+        a completed one back — only when the human asks.
       - Every handoff needs a specific note: what to implement here and why it matters. Put your
         guidance in the NOTE, not in the source. Prefer the handoff note over writing explanatory or
         TODO(human) comments into the code, so the human's file isn't littered with prose they'll have
