@@ -341,6 +341,40 @@ class AvecMoiMcpService : Disposable {
           putJsonArray("required") { add("projectPath") }
         }
       }
+      addJsonObject {
+        put("name", "set_guidance")
+        put(
+          "description",
+          "Save the human's goal for this project and/or add to their extra context (both reported by " +
+            "get_avecmoi_guidance), so lasting preferences they tell you survive a context reset. ONLY " +
+            "write what the human has confirmed — offer, then save once they agree. Not for one-off " +
+            "instructions about the current task. Returns the saved values.",
+        )
+        putJsonObject("inputSchema") {
+          put("type", "object")
+          putJsonObject("properties") {
+            putJsonObject("projectPath") {
+              put("type", "string"); put("description", "Absolute path inside the target project (e.g. your cwd).")
+            }
+            putJsonObject("goal") {
+              put("type", "string")
+              put("description", "Replaces the project goal (what they're working toward / here for). " +
+                "Empty string clears it.")
+            }
+            putJsonObject("appendExtraContext") {
+              put("type", "string")
+              put("description", "Added as a new line at the end of the extra context; what's already " +
+                "there is kept. Prefer this.")
+            }
+            putJsonObject("replaceExtraContext") {
+              put("type", "string")
+              put("description", "Replaces the whole extra context. Only when the human asks for a " +
+                "rewrite or to drop something; don't silently lose text they wrote. Empty string clears it.")
+            }
+          }
+          putJsonArray("required") { add("projectPath") }
+        }
+      }
       tool(
         "register_handoffs",
         "Register the spots where you left work for the human to implement, so the IDE can navigate " +
@@ -613,6 +647,7 @@ class AvecMoiMcpService : Disposable {
       }
       "get_avecmoi_guidance" -> getGuidance(args)
       "set_familiarity" -> setFamiliarity(args)
+      "set_guidance" -> setGuidance(args)
       "register_handoffs" -> registerHandoffs(args)
       "add_handoff" -> addHandoff(args)
       "update_handoff" -> updateHandoff(args)
@@ -726,6 +761,33 @@ class AvecMoiMcpService : Disposable {
     if (problems.isNotEmpty()) report.appendLine("Problems:\n" + problems.joinToString("\n") { "  - $it" })
     val text = report.toString().trim().ifEmpty { "No changes." }
     return textContent(text, isError = problems.isNotEmpty())
+  }
+
+  private fun setGuidance(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    fun str(field: String) = args?.get(field)?.jsonPrimitive?.contentOrNull
+    val goal = str("goal")
+    val append = str("appendExtraContext")
+    val replace = str("replaceExtraContext")
+    if (append != null && replace != null) {
+      return textContent("Pass appendExtraContext OR replaceExtraContext, not both — nothing saved.", isError = true)
+    }
+    if (goal == null && append == null && replace == null) {
+      return textContent("Nothing to do — pass 'goal', 'appendExtraContext' and/or 'replaceExtraContext'.", isError = true)
+    }
+    val settings = project.service<AvecMoiSettingsService>()
+    goal?.let { settings.goal = it.trim() }
+    replace?.let { settings.extraContext = it.trim() }
+    append?.let { settings.extraContext = AvecMoiGuidance.appendExtraContext(settings.extraContext, it) }
+    val text = buildString {
+      appendLine("Saved. The project's guidance now reads:")
+      appendLine("GOAL: ${settings.goal.ifBlank { "(not set)" }}")
+      appendLine("EXTRA CONTEXT:")
+      append(settings.extraContext.ifBlank { "(none)" })
+    }
+    return textContent(text, isError = false)
   }
 
   /**
@@ -1260,7 +1322,8 @@ class AvecMoiMcpService : Disposable {
      * agent can detect it's on a stale tool list after a rebuild ("server has N, I see fewer").
      */
     val TOOL_NAMES = listOf(
-      "ping", "list_projects", "resolve_project", "get_avecmoi_guidance", "set_familiarity", "register_handoffs",
+      "ping", "list_projects", "resolve_project", "get_avecmoi_guidance", "set_familiarity", "set_guidance",
+      "register_handoffs",
       "add_handoff", "update_handoff", "navigate_to",
       "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
       "create_session", "list_sessions", "switch_session", "rename_session", "complete_session",
@@ -1300,6 +1363,13 @@ class AvecMoiMcpService : Disposable {
         'project' for things specific to this codebase. If they don't want to be asked about something,
         record it with interest 'uninterested' so you (and later sessions) stop asking. Don't re-ask
         about subjects already in the table; if they correct a level, update it.
+      - SAVING GOAL AND EXTRA CONTEXT: when the human states something lasting about how they want to
+        work here — what they're here for ("I want to learn coroutines"), or a standing preference
+        ("don't touch the generated parser", "keep changes small") — offer to save it with
+        `set_guidance`, and save only once they agree. One-off instructions for the current task don't
+        belong there. Prefer `appendExtraContext`; replace the extra context only when they ask for a
+        rewrite, and never silently drop text they wrote. If the brief has no GOAL, it's fine to ask
+        what they're working toward ONCE, briefly, early on — don't keep asking if they skip it.
       - Design the change and write stubs that at least parse / compile — no syntax errors (e.g.
         Kotlin `TODO("...")`, Python `raise NotImplementedError`) — so the human implements into
         working scaffolding rather than debugging yours. It need NOT be a fully green build: failing

@@ -197,4 +197,19 @@ class AvecMoiGuidanceTest {
     assertTrue(brief, brief.contains("Kotlin: rusty (neutral) [all projects]"))
     assertTrue(brief, brief.contains("Parser: new (neutral) [this project]"))
   }
+
+  @Test
+  fun appendingExtraContextAddsALineAfterWhatIsThere() {
+    assertEquals("Use JUnit 4.\nKeep PRs small.", AvecMoiGuidance.appendExtraContext("Use JUnit 4.\n\n", "  Keep PRs small. "))
+  }
+
+  @Test
+  fun appendingToBlankExtraContextIsJustTheAddition() {
+    assertEquals("Keep PRs small.", AvecMoiGuidance.appendExtraContext("  ", "Keep PRs small."))
+  }
+
+  @Test
+  fun appendingNothingLeavesExtraContextAlone() {
+    assertEquals("Use JUnit 4.", AvecMoiGuidance.appendExtraContext("Use JUnit 4.", "   "))
+  }
 }

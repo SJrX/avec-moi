@@ -25,7 +25,8 @@ editor lets you hand control back for review.
    syntax-highlighted idioms and useful functions for the task: pointers, never the answer.
  * **Per-project guidance** — record how involved you want to be (goal, self-reported familiarity,
    review depth) so the agent scaffolds vs. hands off accordingly. The agent can fill in the familiarity
-   table for you: it looks at the project, asks about the gaps, and records what you confirm.
+   table for you: it looks at the project, asks about the gaps, and records what you confirm. It can
+   also save your goal and lasting preferences you mention, once you agree.
  * **Step Done** editor nudge that signals the agent to review the current handoff.
  * Session management (create / switch / rename / complete) scoped per project.
 
