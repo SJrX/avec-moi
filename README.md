@@ -29,7 +29,7 @@ editor lets you hand control back for review.
    table for you: it looks at the project, asks about the gaps, and records what you confirm. It can
    also save your goal and lasting preferences you mention, once you agree.
  * **Step Done** editor nudge that signals the agent to review the current handoff.
- * Session management (create / switch / rename / complete) scoped per project.
+ * Session management (create / switch / rename / deactivate / complete / reopen) scoped per project.
 
 ## Installation
 

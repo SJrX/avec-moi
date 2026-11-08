@@ -153,7 +153,9 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
       DefaultActionGroup().apply {
         add(SetActiveAction())
         add(RenameSessionAction())
+        add(DeactivateSessionAction())
         add(CompleteSessionAction())
+        add(ReopenSessionAction())
         addSeparator()
         add(DeleteSessionAction())
       },
@@ -478,6 +480,32 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     }
     override fun actionPerformed(e: AnActionEvent) {
       selectedSession()?.let { project.service<AvecMoiRingService>().completeSession(it.id) }
+    }
+  }
+
+  /** Put the active session away without completing it: it moves to Open and nothing is active. */
+  private inner class DeactivateSessionAction :
+    AnAction("Deactivate Session", "Move this session to Open without completing it", AllIcons.Actions.Pause), DumbAware {
+    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    override fun update(e: AnActionEvent) {
+      val s = selectedSession()
+      e.presentation.isEnabledAndVisible = s != null && !s.historical && s.id == activeSessionId
+    }
+    override fun actionPerformed(e: AnActionEvent) {
+      selectedSession()?.let { project.service<AvecMoiRingService>().deactivateSession(it.id) }
+    }
+  }
+
+  /** Bring a completed session back to Open — for completing by mistake, or picking old work back up. */
+  private inner class ReopenSessionAction :
+    AnAction("Reopen Session", "Move this session back to Open", AllIcons.Actions.Rollback), DumbAware {
+    override fun getActionUpdateThread() = ActionUpdateThread.EDT
+    override fun update(e: AnActionEvent) {
+      val s = selectedSession()
+      e.presentation.isEnabledAndVisible = s != null && s.historical
+    }
+    override fun actionPerformed(e: AnActionEvent) {
+      selectedSession()?.let { project.service<AvecMoiRingService>().reopenSession(it.id) }
     }
   }
 

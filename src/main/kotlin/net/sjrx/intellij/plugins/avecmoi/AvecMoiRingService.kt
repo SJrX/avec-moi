@@ -201,6 +201,32 @@ class AvecMoiRingService(private val project: Project) :
     return ok
   }
 
+  /**
+   * Take an open session out of Active without completing it: it stays in Open, and if it was the
+   * active one, no session is active (the next handoff write creates an "Untitled session"). False if
+   * [id] isn't an open session.
+   */
+  fun deactivateSession(id: String): Boolean {
+    val ok = synchronized(this) {
+      sessions.firstOrNull { it.id == id && !it.historical } ?: return@synchronized false
+      if (activeId == id) activeId = null
+      true
+    }
+    if (ok) changed()
+    return ok
+  }
+
+  /** Bring a historical (completed) session back to Open. It isn't made active. False if [id] isn't historical. */
+  fun reopenSession(id: String): Boolean {
+    val ok = synchronized(this) {
+      val s = sessions.firstOrNull { it.id == id && it.historical } ?: return@synchronized false
+      s.historical = false
+      true
+    }
+    if (ok) changed()
+    return ok
+  }
+
   /** Remove a session entirely, disposing its handoff markers. Used to prune historical sessions. */
   fun deleteSession(id: String): Boolean {
     val ok = synchronized(this) {

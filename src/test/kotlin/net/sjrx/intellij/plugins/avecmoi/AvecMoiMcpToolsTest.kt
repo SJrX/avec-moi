@@ -431,6 +431,45 @@ class AvecMoiMcpToolsTest : AbstractAvecMoiTest() {
       .contains("\"state\":\"historical\""))
   }
 
+  fun testDeactivateSessionLeavesItOpenWithNothingActive() {
+    // Fixture Setup
+    callTool("create_session", """{ "projectPath": "$projectPath", "name": "Later" }""")
+    val id = ring.activeId()!!
+
+    // Exercise SUT
+    val result = callTool("deactivate_session", """{ "projectPath": "$projectPath", "session": "$id" }""")
+
+    // Verification
+    assertFalse(result.contentText(), result.isError())
+    assertNull(ring.activeId())
+    assertTrue(callTool("list_sessions", """{ "projectPath": "$projectPath" }""").contentText()
+      .contains("\"state\":\"open\""))
+  }
+
+  fun testReopenSessionBringsACompletedSessionBackToOpen() {
+    // Fixture Setup
+    callTool("create_session", """{ "projectPath": "$projectPath", "name": "Oops" }""")
+    val id = ring.activeId()!!
+    callTool("complete_session", """{ "projectPath": "$projectPath", "session": "$id" }""")
+
+    // Exercise SUT
+    val result = callTool("reopen_session", """{ "projectPath": "$projectPath", "session": "$id" }""")
+
+    // Verification
+    assertFalse(result.contentText(), result.isError())
+    assertTrue(callTool("list_sessions", """{ "projectPath": "$projectPath" }""").contentText()
+      .contains("\"state\":\"open\""))
+  }
+
+  fun testReopeningASessionThatIsNotCompletedIsAToolError() {
+    // Fixture Setup
+    callTool("create_session", """{ "projectPath": "$projectPath", "name": "Still open" }""")
+    val id = ring.activeId()!!
+
+    // Exercise SUT / Verification
+    assertTrue(callTool("reopen_session", """{ "projectPath": "$projectPath", "session": "$id" }""").isError())
+  }
+
   // --- phrasebooks ----------------------------------------------------------------------------
 
   /** The phrasebook of each work handoff as list_handoffs reports it: (code, gloss) pairs, empty if none. */

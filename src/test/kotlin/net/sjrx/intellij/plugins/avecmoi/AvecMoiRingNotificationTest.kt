@@ -39,7 +39,9 @@ class AvecMoiRingNotificationTest : AbstractAvecMoiTest() {
     assertEquals("createSession", 1, notificationsFrom { ring.createSession("Second", null) })
     assertEquals("switchSession", 1, notificationsFrom { ring.switchSession(id) })
     assertEquals("renameSession", 1, notificationsFrom { ring.renameSession(id, "Renamed") })
+    assertEquals("deactivateSession", 1, notificationsFrom { ring.deactivateSession(id) })
     assertEquals("completeSession", 1, notificationsFrom { ring.completeSession(id) })
+    assertEquals("reopenSession", 1, notificationsFrom { ring.reopenSession(id) })
     assertEquals("deleteSession", 1, notificationsFrom { ring.deleteSession(id) })
   }
 
@@ -54,5 +56,7 @@ class AvecMoiRingNotificationTest : AbstractAvecMoiTest() {
     assertEquals("switch to unknown session", 0, notificationsFrom { ring.switchSession("nope") })
     assertEquals("rename unknown session", 0, notificationsFrom { ring.renameSession("nope", "x") })
     assertEquals("delete unknown session", 0, notificationsFrom { ring.deleteSession("nope") })
+    assertEquals("deactivate unknown session", 0, notificationsFrom { ring.deactivateSession("nope") })
+    assertEquals("reopen unknown session", 0, notificationsFrom { ring.reopenSession("nope") })
   }
 }
