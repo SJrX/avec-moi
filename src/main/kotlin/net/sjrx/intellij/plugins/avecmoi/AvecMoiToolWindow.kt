@@ -118,12 +118,19 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     })
   }
 
+  // Measured outside the renderer (see measureNoteRows): the tree's visible width, the x of a level-1
+  // row and the per-level indent, so the renderer can size a note row for its depth without asking
+  // the tree for row bounds mid-layout.
+  private var visibleWidth = 0
+  private var levelOneX = 0
+  private var levelIndent = 0
+
   private var shownHandoff: AvecMoiRingService.Handoff? = null
   private var shownHandoffNode: DefaultMutableTreeNode? = null
   private var loadingNote = false // true while we set the pane text programmatically (suppress save)
 
   /**
-   * Editable, word-wrapped view of the selected handoff's note (the tree rows can't wrap reliably).
+   * Editable, word-wrapped view of the selected handoff's note in full (its tree row shows only the first line).
    * Edits save to the handoff live per keystroke — no save button — and refresh its tree note row.
    */
   private val noteDetail = JBTextArea().apply {
@@ -144,7 +151,11 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
     toolbar = buildToolbar()
     setContent(
       OnePixelSplitter(true, 0.7f).apply {
-        firstComponent = JBScrollPane(tree)
+        firstComponent = JBScrollPane(tree).apply {
+          viewport.addComponentListener(object : java.awt.event.ComponentAdapter() {
+            override fun componentResized(e: java.awt.event.ComponentEvent) = measureNoteRows()
+          })
+        }
         secondComponent = JBScrollPane(noteDetail)
       },
     )
@@ -187,6 +198,7 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
 
     treeModel.reload()
     expandDefault()
+    measureNoteRows()
     selectHandoff(ring.currentHandoff())
   }
 
@@ -219,6 +231,28 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
         add(DefaultMutableTreeNode(PhrasebookHeader).apply { handoff.phrases.forEach { add(DefaultMutableTreeNode(it)) } })
       }
     }
+
+  /** Pixels available for a note row's text at tree [level]; unbounded until the tree is measured. */
+  private fun noteBudget(level: Int): Int {
+    if (visibleWidth <= 0) return Int.MAX_VALUE
+    // The row's x, then its icon and gap, and a little slack so the "…" never touches the edge.
+    val textX = levelOneX + (level - 1) * levelIndent + JBUI.scale(16 + 4 + 8)
+    return (visibleWidth - textX).coerceAtLeast(JBUI.scale(40))
+  }
+
+  /** Re-measure the tree and, if the width changed, re-lay out the note rows to fit it. */
+  private fun measureNoteRows() {
+    val width = tree.visibleRect.width
+    val ui = tree.ui as? javax.swing.plaf.basic.BasicTreeUI
+    val x = tree.getRowBounds(0)?.x ?: return
+    val indent = ui?.let { it.leftChildIndent + it.rightChildIndent } ?: JBUI.scale(20)
+    if (width == visibleWidth && x == levelOneX && indent == levelIndent) return
+    visibleWidth = width
+    levelOneX = x
+    levelIndent = indent
+    val nodes = root.depthFirstEnumeration().toList().filterIsInstance<DefaultMutableTreeNode>()
+    for (n in nodes) if (n.userObject is Note) treeModel.nodeChanged(n)
+  }
 
   /** The handoff row [node] belongs to: itself, or the nearest handoff above a note/phrasebook row. */
   private fun owningHandoffNode(node: DefaultMutableTreeNode?): DefaultMutableTreeNode? {
@@ -425,7 +459,17 @@ internal class AvecMoiToolWindowPanel(private val project: Project) : SimpleTool
           // The note row wears its handoff's kind icon (pencil / eye / bookmark), so kinds read apart.
           val kind = ((node.parent as? DefaultMutableTreeNode)?.userObject as? AvecMoiRingService.Handoff)?.kind
           icon = kind?.icon ?: AllIcons.General.Balloon
-          append(obj.text.ifBlank { "(no note)" }, SimpleTextAttributes.REGULAR_ITALIC_ATTRIBUTES)
+          // First line only, Markdown rendered and cut to the width so the tree never scrolls
+          // sideways; the full note is in the wrapped pane below.
+          val textStyle = project.service<AvecMoiSettingsService>().noteTextStyle
+          val fonts = HashMap<Int, java.awt.FontMetrics>()
+          val widthOf: NoteMeasure = { text, style ->
+            val awt = AvecMoiNoteTreeRow.fontStyle(textStyle, style)
+            fonts.getOrPut(awt) { tree.getFontMetrics(tree.font.deriveFont(awt)) }.stringWidth(text)
+          }
+          for (f in AvecMoiNoteTreeRow.fragments(obj.text, noteBudget(node.level), widthOf, textStyle)) {
+            append(f.text, SimpleTextAttributes(f.style, null))
+          }
         }
         PhrasebookHeader -> {
           icon = AllIcons.Actions.IntentionBulb
