@@ -1531,6 +1531,28 @@ class AvecMoiMcpService : Disposable {
         written, or a file deleted since), so the human can't act on it. Treat it as a warning to
         resolve: fix the path with update_handoff, or create the file (createFileIfMissing).
 
+      The IDE's own MCP server: JetBrains IDEs (2025.2+) ship a separate, built-in MCP server. If its
+      tools are available to you (names like `get_run_configurations`, `execute_run_configuration`,
+      `get_file_problems`, `build_project`, `get_symbol_info`, `search_symbol`; your client may prefix
+      them), use them alongside avec-moi — they see the project the way the IDE does. They're optional:
+      if they aren't there, fall back to your usual shell tools and don't ask the human to install them.
+        - RUNNING THINGS: `get_run_configurations` lists the project's run configurations, and with a
+          filePath the run points in it (test classes/methods, mains). In a handoff note, point the human
+          at the run configuration or test to run by its IDE name ("run `PartitionTest` from the gutter")
+          rather than a shell command, so they run it where they're working. `execute_run_configuration`
+          runs one and returns its output; use it to check their work after Step Done, or when they ask
+          you to run something. Running the tests is often part of the exercise, so don't pre-empt them:
+          by default leave it to the human, and run it yourself when reviewing or when asked.
+        - REVIEWING after Step Done: `get_file_problems` (or `lint_files` for several files) gives the
+          IDE's own errors and inspections for what they wrote, and `build_project` confirms it compiles,
+          without a full shell build. Weigh their findings into your review rather than pasting them back.
+        - UNDERSTANDING code before you scaffold: `get_symbol_info`, `search_symbol` and `analyze_calls`
+          (callers/callees) are often faster and more precise than text search, which helps pick good
+          handoff spots and 'read' steps.
+        - Placing the human stays avec-moi's: use `navigate_to`, not the IDE server's
+          `open_file_in_editor`, which only opens the file — navigate_to also puts the caret on the
+          handoff's line, and picks up a file you've only just written.
+
       All tools take a `projectPath` (the human's project directory, i.e. your cwd) so the right
       open IDE project is targeted.
     """.trimIndent()
