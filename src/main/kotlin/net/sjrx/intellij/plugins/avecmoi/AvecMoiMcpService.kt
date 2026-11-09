@@ -574,6 +574,32 @@ class AvecMoiMcpService : Disposable {
           putJsonArray("required") { add("projectPath"); add("handoff") }
         }
       }
+      addJsonObject {
+        put("name", "refresh_files_in_ide")
+        put(
+          "description",
+          "Re-read files from disk into the IDE, so the human sees what you just wrote. The IDE only " +
+            "notices outside edits on its own after a delay. Call it after you edit or create files, " +
+            "unless your next avec-moi call names those files anyway (the handoff tools, navigate_to, " +
+            "list_handoffs and mark_handoff_done refresh their own files). Returns JSON: " +
+            "{files:[{file, onDisk, unsavedInIde}]}. unsavedInIde=true means the human has unsaved edits " +
+            "to that file in the IDE, so it was NOT reloaded; tell them rather than overwrite their work.",
+        )
+        putJsonObject("inputSchema") {
+          put("type", "object")
+          putJsonObject("properties") {
+            putJsonObject("projectPath") {
+              put("type", "string"); put("description", "Absolute path inside the target project (e.g. your cwd).")
+            }
+            putJsonObject("files") {
+              put("type", "array")
+              putJsonObject("items") { put("type", "string") }
+              put("description", "The files you edited or created (absolute, or relative to the project root).")
+            }
+          }
+          putJsonArray("required") { add("projectPath"); add("files") }
+        }
+      }
       tool(
         "remove_handoff",
         "Remove a handoff entirely (by its 1-based number from list_handoffs) — e.g. it no longer " +
@@ -670,6 +696,7 @@ class AvecMoiMcpService : Disposable {
       "list_handoffs" -> listHandoffs(args)
       "clear_handoffs" -> clearHandoffs(args)
       "mark_handoff_done" -> markHandoffDone(args)
+      "refresh_files_in_ide" -> refreshFilesInIde(args)
       "remove_handoff" -> removeHandoff(args)
       "create_session" -> createSession(args)
       "list_sessions" -> listSessions(args)
@@ -1103,12 +1130,40 @@ class AvecMoiMcpService : Disposable {
       ?: return textContent("Missing 'handoff' number.", isError = true)
     val done = args["done"]?.jsonPrimitive?.booleanOrNull ?: true
     val ring = project.service<AvecMoiRingService>()
+    // The agent often marks a step done right after implementing it itself (Do This Step): show the
+    // human that code now, not whenever the IDE's file watcher gets round to it.
+    ring.all().getOrNull(n - 1)?.let { AvecMoiNavigation.refreshFromDisk(project, listOf(it.file)) }
     return if (ring.markDone(n - 1, done)) {
       val what = if (done) "done" else "not done"
       textContent("Marked handoff #$n $what in '${project.name}'.", isError = false)
     } else {
       textContent("No handoff #$n in '${project.name}'.", isError = true)
     }
+  }
+
+  private fun refreshFilesInIde(args: JsonObject?): JsonObject {
+    val path = args?.get("projectPath")?.jsonPrimitive?.contentOrNull
+    val project = resolveProject(path)
+      ?: return textContent("No open project matches path: $path", isError = true)
+    val files = (args?.get("files") as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
+      ?.filter { it.isNotBlank() }
+    if (files.isNullOrEmpty()) return textContent("Missing 'files': the files you edited or created.", isError = true)
+    AvecMoiNavigation.refreshFromDisk(project, files)
+    val fdm = FileDocumentManager.getInstance()
+    return jsonContent(
+      buildJsonObject {
+        putJsonArray("files") {
+          for (file in files) {
+            val vf = AvecMoiNavigation.resolveFile(project, file)
+            addJsonObject {
+              put("file", file)
+              put("onDisk", vf != null)
+              put("unsavedInIde", vf != null && fdm.isFileModified(vf))
+            }
+          }
+        }
+      },
+    )
   }
 
   private fun removeHandoff(args: JsonObject?): JsonObject {
@@ -1367,7 +1422,8 @@ class AvecMoiMcpService : Disposable {
       "ping", "list_projects", "resolve_project", "get_avecmoi_guidance", "set_familiarity", "set_guidance",
       "register_handoffs",
       "add_handoff", "update_handoff", "navigate_to",
-      "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "remove_handoff",
+      "get_editor_context", "list_handoffs", "clear_handoffs", "mark_handoff_done", "refresh_files_in_ide",
+      "remove_handoff",
       "create_session", "list_sessions", "switch_session", "rename_session", "complete_session",
       "deactivate_session", "reopen_session",
     )
@@ -1530,6 +1586,13 @@ class AvecMoiMcpService : Disposable {
         fileExists=false is broken — the file isn't on disk (a wrong path, scaffolding you haven't
         written, or a file deleted since), so the human can't act on it. Treat it as a warning to
         resolve: fix the path with update_handoff, or create the file (createFileIfMissing).
+      - KEEPING THE IDE IN SYNC: you write files behind the IDE's back, and it only notices on its own
+        after a delay, so the human can be left looking at the old code. After you edit or create
+        files (implementing a step they handed you, scaffolding, a fix), call `refresh_files_in_ide`
+        with them, unless your next avec-moi call names those files anyway: register_handoffs,
+        add_handoff, update_handoff, navigate_to, list_handoffs and mark_handoff_done refresh their
+        own files. If a file comes back unsavedInIde=true, the human has unsaved edits there that kept
+        it from reloading; tell them instead of writing over their work.
 
       The IDE's own MCP server: JetBrains IDEs (2025.2+) ship a separate, built-in MCP server. If its
       tools are available to you (names like `get_run_configurations`, `execute_run_configuration`,
