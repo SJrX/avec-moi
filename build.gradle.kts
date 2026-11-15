@@ -215,10 +215,8 @@ tasks {
 
 // Searchable-options indexing adds a slow headless-IDE pass we don't need for a plugin
 // without a Settings UI yet. Re-enable once there are settings to index.
-tasks {
-  buildSearchableOptions {
-    enabled = false
-  }
+intellijPlatform {
+  buildSearchableOptions = false
 }
 
 tasks.register<org.jetbrains.intellij.platform.gradle.tasks.PublishPluginTask>("publishPluginStandalone") {
