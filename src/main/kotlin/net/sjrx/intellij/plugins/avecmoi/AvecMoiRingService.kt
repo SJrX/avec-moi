@@ -437,6 +437,12 @@ class AvecMoiRingService(private val project: Project) :
    * marker, the handoff floats at that line; on the next edit to the same document it's re-anchored
    * there (or on the last line, if the file is now shorter). Either transition redraws the notes,
    * whose inlays the deletion disposed. Idempotent; called at project startup.
+   *
+   * The multicaster reports every document, including ones with no file behind them (the reworked
+   * terminal's output, consoles) that are edited on `Dispatchers.UI`, where taking the read lock is
+   * forbidden. Those are skipped before touching any marker: [RangeMarker.getDocument] may have to
+   * re-create a garbage-collected file document, and that takes the read lock. Handoff markers are
+   * only ever in file documents, so nothing is lost.
    */
   fun startTracking() {
     if (tracking) return
@@ -444,6 +450,7 @@ class AvecMoiRingService(private val project: Project) :
     EditorFactory.getInstance().eventMulticaster.addDocumentListener(
       object : DocumentListener {
         override fun beforeDocumentChange(event: DocumentEvent) {
+          if (!isFileDocument(event.document)) return
           for (h in allHandoffs()) {
             val m = h.marker ?: continue
             if (m.isValid && m.document === event.document) h.lastLine = m.document.getLineNumber(m.startOffset) + 1
@@ -451,6 +458,7 @@ class AvecMoiRingService(private val project: Project) :
         }
 
         override fun documentChanged(event: DocumentEvent) {
+          if (!isFileDocument(event.document)) return
           if (reanchor(event.document)) {
             // Not from inside the write action: listeners rebuild inlays and the tree.
             ApplicationManager.getApplication().invokeLater({ changed() }, project.disposed)
@@ -460,6 +468,9 @@ class AvecMoiRingService(private val project: Project) :
       this,
     )
   }
+
+  /** A plain user-data lookup — no lock — so it's safe on any dispatcher. */
+  private fun isFileDocument(doc: Document): Boolean = FileDocumentManager.getInstance().getFile(doc) != null
 
   /** Every handoff in every session — markers exist for all of them, not just the active one. */
   private fun allHandoffs(): List<Handoff> = synchronized(this) { sessions.flatMap { it.handoffs + it.references } }
